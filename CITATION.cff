@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this simulation, please cite the paper. To refer to this code specifically, also cite this repository."
+title: "COMRob 2023 Sliding Mode Formation Simulation"
+type: software
+repository-code: "https://github.com/juliordzcer/comrob2023-sliding-mode-formation"
+license: Apache-2.0
+authors:
+  - family-names: "Rodriguez"
+    given-names: "Julio Cesar"
+    email: "contact@juliordz.com"
+preferred-citation:
+  type: conference-paper
+  title: "Diseño de Control de Formación basado en Modos Deslizantes para un Grupo de Quad-Rotors"
+  authors:
+    - family-names: "Rodríguez-Cervantes"
+      given-names: "Julio César"
+    - family-names: "Dzul"
+      given-names: "Alejandro"
+    - family-names: "Ríos"
+      given-names: "Héctor"
+  collection-title: "XXV Congreso Mexicano de Robótica (COMRob)"
+  conference:
+    name: "XXV Congreso Mexicano de Robótica (COMRob)"
+    city: "Xalapa"
+    country: "MX"
+  year: 2023
