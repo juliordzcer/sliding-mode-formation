@@ -14,47 +14,58 @@ Gazebo simulation based on the paper *Diseño de Control de Formación basado en
 
 This repository is based on the simulation of the paper, but it uses another drone and other code. See [Differences from the paper](#differences-from-the-paper).
 
+## This branch
+
+This is the **ROS 2** version of the repository: a ROS node commands the drones and a bridge connects it to Gazebo. The `main` branch has the same simulation without ROS, with a simpler installation.
+
 ## What you need
 
-- A computer with **Ubuntu 24.04**.
-- About 5 GB of free disk space. No special GPU is needed, because the drones have no cameras here.
+- A computer with **Ubuntu 24.04**, because ROS 2 Jazzy needs it.
+- About 10 GB of free disk space. No special GPU is needed, because the drones have no cameras here.
 
-You do not need to know ROS or Python to run it, and ROS is not used. Copy each block into a terminal (`Ctrl+Alt+T` opens one) and press Enter.
+You do not need to know ROS or Python to run it. Copy each block into a terminal (`Ctrl+Alt+T` opens one) and press Enter.
 
 ## Installation
 
-**1. Download the repository**
+**1. Download this branch**
 
 ```bash
 sudo apt update && sudo apt install -y git
-cd ~
-git clone https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
-cd comrob2023-sliding-mode-formation
+mkdir -p ~/ws_comrob2023_ros/src
+cd ~/ws_comrob2023_ros/src
+git clone -b ros2 https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
 ```
 
-**2. Install Gazebo and the other dependencies**
+**2. Install ROS 2, Gazebo and the other dependencies**
 
-This asks for your password and takes a few minutes.
+This asks for your password and takes a while.
 
 ```bash
+cd ~/ws_comrob2023_ros/src/comrob2023-sliding-mode-formation
 ./install_deps.sh
 ```
 
-**3. Build the controllers**
+**3. Build**
 
 ```bash
-cmake -S . -B build
-cmake --build build -j4
+source /opt/ros/jazzy/setup.bash
+cd ~/ws_comrob2023_ros
+colcon build --symlink-install
 ```
 
-It should end with `Built target` lines and no errors.
+It should end with `1 package finished`.
+
+**4. Prepare each new terminal**
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source ~/ws_comrob2023_ros/install/setup.bash
+```
 
 ## Running the simulation
 
-From the repository folder, choose a controller:
-
 ```bash
-python3 scripts/fly_formation.py --controller ntsmc
+ros2 launch comrob2023_formation formation.launch.py controller:=ntsmc
 ```
 
 Gazebo and the control panel open after a few seconds. In the Gazebo window, press the view button or scroll to find the drones. Then:
@@ -63,33 +74,44 @@ Gazebo and the control panel open after a few seconds. In the Gazebo window, pre
 2. Press **Automatic Mode**. The leader starts the trajectory and the panel shows the formation error.
 3. Press **Land** to finish.
 
-**Emergency Stop** turns the motors off, so the drones fall. Close the panel window to end the simulation.
+**Emergency Stop** turns the motors off, so the drones fall. To close everything, press `Ctrl+C` in the terminal.
 
 ### Options
 
-| Option | What it does |
-|---|---|
-| `--controller` | `pid`, `tc`, `sta`, `stsmc` or `ntsmc` |
-| `--headless` | Run Gazebo without its window |
-| `--disturbance` | Apply the disturbance forces of the paper |
-| `--time-scale` | Speed of the trajectory. `1.0` is the speed of the paper, and the default is `0.5` |
-| `--auto` | Fly without the panel: take off, follow the trajectory, save the data and exit |
-| `--duration` | Seconds of automatic mode with `--auto` |
-| `--output` | Folder for the flight data with `--auto` |
+| Option | Values | Default | What it does |
+|---|---|---|---|
+| `controller` | `pid`, `tc`, `sta`, `stsmc`, `ntsmc` | `ntsmc` | Attitude controller |
+| `headless` | `true`, `false` | `false` | Run Gazebo without its window |
+| `run_gui` | `true`, `false` | `true` | Open the control panel |
+| `disturbance` | `true`, `false` | `false` | Apply the disturbance forces of the paper |
+| `time_scale` | number | `0.5` | Speed of the trajectory. `1.0` is the speed of the paper |
+| `auto_sequence` | `true`, `false` | `false` | Take off, fly and land without the panel |
+| `duration` | seconds | `50.0` | Automatic mode with `auto_sequence` |
+| `output` | folder | empty | Save the flight as a CSV with `auto_sequence` |
+
+### Topics
+
+| Topic | Type | Content |
+|---|---|---|
+| `/state` | `std_msgs/Int32` | 0 idle, 1 automatic, 2 take off, 3 land, 4 stop |
+| `/model/espdroneN/pose` | `geometry_msgs/Pose` | Pose of drone N |
+| `/espdroneN/cmd_position` | `geometry_msgs/Pose` | Position command of drone N |
+| `/espdroneN/motor_enable` | `std_msgs/Bool` | Motors of drone N |
+| `/formation_error` | `std_msgs/Float64MultiArray` | Time, then the error of each follower in meters |
 
 ## Reproducing the results
 
-This flies all the controllers, one after the other, and takes about 6 minutes:
+Run one flight for each controller, changing `controller` and the folder:
 
 ```bash
-python3 scripts/compare_controllers.py --output results --disturbance
+ros2 launch comrob2023_formation formation.launch.py controller:=ntsmc headless:=true run_gui:=false auto_sequence:=true disturbance:=true output:=results
 ```
 
-The flights are saved in `results/`, one CSV per controller, with the summary in `results/summary.csv`.
+The node prints the error when the automatic mode ends and saves `results/ntsmc.csv`. Press `Ctrl+C` once the drones have landed.
 
 ## Results
 
-Flights with the disturbance forces, at half the speed of the paper. The errors are RMS, measured after the first 20 s and averaged over 3 flights. The peak is the largest error of a follower on any axis in those flights.
+Flights of the `main` branch, with the disturbance forces, at half the speed of the paper. With NTSMC, four flights of this branch gave the same errors (follower x 0.189 to 0.196 m, y 0.204 to 0.212 m, z 0.023 m). The errors are RMS, measured after the first 20 s and averaged over 3 flights. The peak is the largest error of a follower on any axis in those flights.
 
 | Controller | Follower x [m] | Follower y [m] | Follower z [m] | Largest peak [m] | Flights |
 |---|---|---|---|---|---|
@@ -126,11 +148,11 @@ The attitude laws of the plugins follow the equations of the paper.
 
 ## Common problems
 
-**`Gazebo did not start. Check that the plugins were built.`**: run the two commands of step 3 of the installation, from the repository folder.
+**`Package 'comrob2023_formation' not found`**: run the two `source` commands of step 4 in that terminal.
 
-**`No module named 'gz'`**: run `./install_deps.sh` again.
+**A change has no effect, or plugins are missing**: build again with the command of step 3.
 
-**The drones stay on the ground**: close everything, check that no earlier simulation is still running with `pgrep -a ruby`, and start again.
+**The drones stay on the ground**: close everything with `Ctrl+C`, check that no earlier simulation is still running with `pgrep -a ruby`, and start again.
 
 ## Repository layout
 
@@ -139,7 +161,9 @@ The attitude laws of the plugins follow the equations of the paper.
 | `plugins` | Motor model, position controller and attitude controllers for Gazebo |
 | `models/espdrone` | ESP-drone model |
 | `worlds` | Gazebo world |
-| `scripts` | Flight, control panel and comparison |
+| `nodes` | ROS nodes: formation commands and control panel |
+| `launch` | Launch file with Gazebo and the bridge |
+| `comrob2023_formation` | Formation, trajectory, gains and world generation |
 
 ## How to cite
 

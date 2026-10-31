@@ -2,30 +2,37 @@
 # Copyright 2026 Julio Cesar Rodriguez <contact@juliordz.com>
 # SPDX-License-Identifier: Apache-2.0
 #
-# Installs Gazebo Harmonic and the tools this repository needs on Ubuntu 24.04.
+# Installs ROS 2 Jazzy, Gazebo Harmonic and the tools this branch needs on Ubuntu 24.04.
 # Run it from the repository folder: ./install_deps.sh
 set -euo pipefail
 
 if [[ "$(. /etc/os-release && echo "$VERSION_ID")" != "24.04" ]]; then
-  echo "This script supports Ubuntu 24.04 only." >&2
+  echo "This script supports Ubuntu 24.04 only (ROS 2 Jazzy needs it)." >&2
   exit 1
 fi
 
 SUDO=""
 [[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
 
-echo "==> Gazebo package repository"
+echo "==> System packages"
 $SUDO apt-get update
-$SUDO apt-get install -y curl lsb-release gnupg
-$SUDO curl -fsSL https://packages.osrfoundation.org/gazebo.gpg \
-  -o /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] http://packages.osrfoundation.org/gazebo/ubuntu-stable $(lsb_release -cs) main" \
-  | $SUDO tee /etc/apt/sources.list.d/gazebo-stable.list > /dev/null
-$SUDO apt-get update
+$SUDO apt-get install -y curl lsb-release python3-tk python3-numpy python3-matplotlib
 
-echo "==> Gazebo Harmonic, compiler and Python packages"
-$SUDO apt-get install -y gz-harmonic build-essential cmake \
-  python3-gz-transport13 python3-gz-msgs10 python3-numpy python3-matplotlib python3-tk
+if [[ ! -f /opt/ros/jazzy/setup.bash ]]; then
+  echo "==> ROS 2 Jazzy"
+  $SUDO apt-get install -y software-properties-common
+  $SUDO add-apt-repository -y universe
+  VERSION=$(curl -fsSL https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest \
+    | grep -F '"tag_name"' | cut -d'"' -f4)
+  curl -fsSL -o /tmp/ros2-apt-source.deb \
+    "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${VERSION}/ros2-apt-source_${VERSION}.noble_all.deb"
+  $SUDO apt-get install -y /tmp/ros2-apt-source.deb
+  $SUDO apt-get update
+  $SUDO apt-get install -y ros-jazzy-desktop
+fi
+
+echo "==> ROS packages used by this branch (includes Gazebo Harmonic)"
+$SUDO apt-get install -y python3-colcon-common-extensions ros-jazzy-ros-gz
 
 echo
 echo "Done. Next step: the 'Build' section of README.md."

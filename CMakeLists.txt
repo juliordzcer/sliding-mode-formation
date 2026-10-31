@@ -9,6 +9,8 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(gz-cmake3 REQUIRED)
 find_package(gz-sim8 REQUIRED)
 find_package(gz-transport13 REQUIRED)
@@ -33,3 +35,11 @@ foreach(plugin ${PLUGINS})
     gz-math7::gz-math7
     gz-common5::gz-common5)
 endforeach()
+
+install(TARGETS ${PLUGINS} LIBRARY DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY launch models worlds DESTINATION share/${PROJECT_NAME})
+ament_python_install_package(${PROJECT_NAME})
+install(PROGRAMS nodes/formation_node.py nodes/control_panel.py DESTINATION lib/${PROJECT_NAME})
+ament_environment_hooks("${CMAKE_CURRENT_SOURCE_DIR}/env-hooks/50.${PROJECT_NAME}.dsv.in")
+
+ament_package()
