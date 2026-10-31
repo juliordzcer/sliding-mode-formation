@@ -83,7 +83,7 @@ Gazebo and the control panel open after a few seconds. In the Gazebo window, pre
 | `controller` | `pid`, `tc`, `sta`, `stsmc`, `ntsmc` | `ntsmc` | Attitude controller |
 | `headless` | `true`, `false` | `false` | Run Gazebo without its window |
 | `run_gui` | `true`, `false` | `true` | Open the control panel |
-| `disturbance` | `true`, `false` | `false` | Apply the disturbance forces of the paper |
+| `disturbance` | `true`, `false` | `false` | Apply the disturbance forces and torques of the paper |
 | `time_scale` | number | `0.5` | Speed of the trajectory. `1.0` is the speed of the paper |
 | `auto_sequence` | `true`, `false` | `false` | Take off, fly and land without the panel |
 | `duration` | seconds | `50.0` | Automatic mode with `auto_sequence` |
@@ -111,17 +111,22 @@ The node prints the error when the automatic mode ends and saves `results/ntsmc.
 
 ## Results
 
-Flights of the `main` branch, with the disturbance forces, at half the speed of the paper. With NTSMC, four flights of this branch gave the same errors (follower x 0.189 to 0.196 m, y 0.204 to 0.212 m, z 0.023 m). The errors are RMS, measured after the first 20 s and averaged over 3 flights. The peak is the largest error of a follower on any axis in those flights.
+Flights of the `main` branch, with the disturbance forces and torques of the paper, at half the speed of the paper, with and without the disturbance observer. The errors are the RMS of the followers after the first 20 s, averaged over 3 flights. The peak is the largest error of a follower on any axis in those flights.
 
-| Controller | Follower x [m] | Follower y [m] | Follower z [m] | Largest peak [m] | Flights |
+| Controller | Observer | x [m] | y [m] | z [m] | Worst peak [m] |
 |---|---|---|---|---|---|
-| NTSMC | 0.196 | 0.204 | 0.023 | 0.38 | Repeatable |
-| STSMC | 0.198 | 0.207 | 0.023 | 0.39 | Repeatable |
-| PID | 0.207 | 0.197 | 0.023 | 1.97 | Vary between flights |
-| STA | 0.407 | 0.276 | 0.042 | 1.71 | Vary between flights |
-| TC | 1.356 | 2.322 | 0.075 | 18.67 | Not reliable, see below |
+| PID | Yes | 0.190 | 0.140 | 0.022 | 0.46 |
+| PID | No | 0.188 | 0.157 | 0.023 | 0.58 |
+| STSMC | Yes | 0.189 | 0.208 | 0.022 | 0.40 |
+| STSMC | No | 0.184 | 0.215 | 0.023 | 0.41 |
+| NTSMC | Yes | 0.195 | 0.206 | 0.022 | 0.39 |
+| NTSMC | No | 0.188 | 0.215 | 0.023 | 0.40 |
+| STA | Yes | 0.422 | 0.276 | 0.047 | 1.94 |
+| STA | No | 0.506 | 0.383 | 0.050 | 2.07 |
+| TC | Yes | 0.787 | 0.744 | 0.673 | 3.82 |
+| TC | No | 1.091 | 0.898 | 0.149 | 11.14 |
 
-Most of the error comes from the leader, which lags behind its trajectory by about the same amount (about 0.19 m per axis), and the followers inherit that lag. As in the paper, NTSMC has the lowest error, but here its advantage over STSMC is very small.
+Most of the error comes from the leader, which lags behind its trajectory, and the followers inherit that lag. The observer has a small effect with PID, STSMC and NTSMC, and a clearer one with STA. These do not reproduce the ranking of the paper, where NTSMC has the lowest error: here PID has the lowest error in y and the three best controllers are close in x.
 
 These results are for this drone and these gains, so they do not replace the ones in the paper.
 
@@ -132,13 +137,17 @@ These results are for this drone and these gains, so they do not replace the one
 | Simulator | Numerical simulation | Gazebo, with propellers and motor dynamics |
 | Drone | Crazyflie, 32 g | ESP-drone model, 59 g |
 | Position control | Virtual controls of the paper | Cascade of position and velocity loops of the drone firmware |
-| Disturbance observer | FT-SMO | Not included |
-| Disturbances | Forces and torques | Forces only |
+| Disturbance observer | FT-SMO | The same observer, with its estimate applied through the attitude and thrust commands of the firmware cascade |
+| Disturbances | Forces and torques | The same, scaled to the mass and inertia of this drone |
 | Trajectory | As in the paper | Half the speed by default, because the paper's speed reaches 1.9 m/s |
 | Height | `z_d` printed with `tan` | `tanh`, starting from hover at 1 m |
 | Gains | Table of the paper | Tuned in flight for this drone |
 
 The attitude laws of the plugins follow the equations of the paper.
+
+## TODO
+
+- Add larger formations with the same strategy, such as a pyramid with many drones or figures like letters, to show that it scales to many more agents.
 
 ## Known limitations
 
@@ -167,7 +176,7 @@ The attitude laws of the plugins follow the equations of the paper.
 
 ## How to cite
 
-If you use this simulation, please cite the paper. To refer to this code specifically, also cite this repository using `CITATION.cff`.
+If you use this code, please cite both the paper and this repository.
 
 ```bibtex
 @inproceedings{rodriguez2023formacion,
@@ -176,6 +185,15 @@ If you use this simulation, please cite the paper. To refer to this code specifi
   booktitle = {XXV Congreso Mexicano de Robótica (COMRob)},
   address   = {Xalapa, México},
   year      = {2023}
+}
+```
+
+```bibtex
+@software{rodriguez2026comrob2023sim,
+  author = {Rodriguez, Julio Cesar},
+  title  = {COMRob 2023 Sliding Mode Formation Simulation},
+  year   = {2026},
+  url    = {https://github.com/juliordzcer/comrob2023-sliding-mode-formation}
 }
 ```
 

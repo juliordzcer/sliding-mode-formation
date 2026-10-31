@@ -11,7 +11,7 @@ import csv
 import math
 import os
 
-from comrob2023_formation import HOVER_Z, LAND_SEC, LEADER, MASS, N, OFFSETS, TAKEOFF_SEC, WORLD
+from comrob2023_formation import HOVER_Z, INERTIA, LAND_SEC, LEADER, MASS, N, OFFSETS, TAKEOFF_SEC, WORLD
 from comrob2023_formation import leader_trajectory
 from geometry_msgs.msg import Pose
 import numpy as np
@@ -93,16 +93,21 @@ class FormationNode(Node):
             pub.publish(msg)
 
     def send_disturbance(self, t, dt):
-        # Forces of the paper, given there as accelerations. Each message acts
+        # Disturbances of the paper, given there as accelerations. Each message acts
         # during one physics step, so it carries the impulse of the whole period.
         force = (dt / PHYSICS_STEP_SEC) * MASS * np.array([
             0.3 * math.sin(0.4 * t), 0.3 * math.cos(0.4 * t),
-            0.1 * math.sin(0.4 * t) - 0.1 * math.sin(0.6 * t) + 0.1 * math.cos(0.8 * t)])
+            -0.5 + 0.1 * math.sin(0.4 * t) - 0.1 * math.sin(0.6 * t) + 0.1 * math.cos(0.8 * t)])
+        torque = (dt / PHYSICS_STEP_SEC) * INERTIA * np.array([
+            -0.5 + 0.2 * math.sin(0.4 * t) - 0.2 * math.sin(0.6 * t) + 0.2 * math.cos(0.6 * t),
+            -0.5 + 0.2 * math.cos(0.8 * t) - 0.2 * math.sin(0.4 * t) + 0.2 * math.cos(0.8 * t),
+            -0.5 + 0.2 * math.cos(0.8 * t) - 0.2 * math.sin(0.6 * t) + 0.2 * math.cos(0.8 * t)])
         for i in range(N):
             msg = EntityWrench()
             msg.entity.name = f'espdrone{i + 1}::body'
             msg.entity.type = Entity.LINK
             msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z = (float(v) for v in force)
+            msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z = (float(v) for v in torque)
             self.wrench_pub.publish(msg)
 
     def publish_state(self, state):

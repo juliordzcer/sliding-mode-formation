@@ -10,6 +10,6 @@ who also measured its parameters on the real drone. It is licensed under the
 Creative Commons Attribution 4.0 International license (see models/espdrone/LICENSE).
 Copyright 2026 Julio Cesar Rodriguez. Credit him when you use or adapt the model.
 
-If you use these simulations in academic work, please cite the paper listed in
-CITATION.cff. This repository is based on the simulation of that paper, but it
+If you use this code in academic work, please cite both the paper and this
+repository, as listed in CITATION.cff. This repository is based on the simulation of that paper, but it
 uses a different drone and different code. See README.md for the differences.

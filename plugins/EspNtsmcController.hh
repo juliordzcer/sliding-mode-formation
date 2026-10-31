@@ -3,6 +3,7 @@
 #pragma once
 
 #include "EspControllerCommon.hh"
+#include "EspFtSmo.hh"
 #include <gz/sim/Link.hh>
 #include <gz/sim/Model.hh>
 #include <gz/sim/System.hh>
@@ -68,6 +69,11 @@ private:
   // LPF state on output torque (default 40 Hz @ 500 Hz)
   double tau_phi_f{0.0}, tau_theta_f{0.0}, tau_psi_f{0.0};
   double lpf_alpha{0.3345};
+  // Angular acceleration per unit of control output, from the motor and frame model.
+  static constexpr double kAccelPerUnitRoll{0.0615};
+  static constexpr double kAccelPerUnitPitch{0.0675};
+  static constexpr double kAccelPerUnitYaw{0.0098};
+  espdrone::EspFtSmo obsPhi, obsTheta, obsPsi;
 
   // LPF state on angular rate measurements (default 50 Hz @ 500 Hz)
   double phip_f_{0.0}, thetap_f_{0.0}, psip_f_{0.0};

@@ -5,6 +5,7 @@
 
 #include <gz/sim/Link.hh>
 #include <gz/sim/Model.hh>
+#include "EspFtSmo.hh"
 #include <gz/sim/System.hh>
 #include <gz/transport/Node.hh>
 #include <gz/msgs/pose.pb.h>
@@ -156,6 +157,9 @@ private:
   gz::transport::Node node;
   gz::transport::Node::Publisher cmdAttPub;
   gz::transport::Node::Publisher statePub;
+  espdrone::EspFtSmo obsX, obsY, obsZ;
+  bool obsActive{false};
+  double lastThrust{0.0};
   bool initialized{false};
 
   std::mutex gainsMutex;

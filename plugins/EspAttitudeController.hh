@@ -5,6 +5,7 @@
 
 #include <gz/sim/Link.hh>
 #include <gz/sim/Model.hh>
+#include "EspFtSmo.hh"
 #include <gz/sim/System.hh>
 #include <gz/transport/Node.hh>
 #include <gz/msgs/twist.pb.h>
@@ -178,6 +179,12 @@ private:
   gz::transport::Node node;
   gz::transport::Node::Publisher controlCmdPub;
   gz::transport::Node::Publisher statePub;
+  // Angular acceleration per unit of control output, from the motor and frame model.
+  static constexpr double kAccelPerUnitRoll{0.0615};
+  static constexpr double kAccelPerUnitPitch{0.0675};
+  static constexpr double kAccelPerUnitYaw{0.0098};
+  espdrone::EspFtSmo obsPhi, obsTheta, obsPsi;
+  double lastRoll{0.0}, lastPitch{0.0}, lastYaw{0.0};
   bool initialized{false};
 
   double thrustBase{42000.0};  // matches firmware for ESP-drone (59g) — used for time-regression recovery

@@ -15,7 +15,8 @@ HOVER_Z = 1.0
 TAKEOFF_SEC = 5.0
 LAND_SEC = 6.0
 COMMAND_HZ = 50.0
-MASS = 0.059
+MASS = 0.063
+INERTIA = np.array([1.594e-05, 1.4535e-05, 2.8468e-05])
 WORLD = 'espdrone_multi'
 # The trajectory of the paper reaches 1.9 m/s, more than this drone model follows well.
 TIME_SCALE = 0.5
@@ -55,16 +56,19 @@ SMC_CLASS = {'sta': 'EspStaController', 'tc': 'EspTcController',
 CONTROLLERS = ('pid', 'tc', 'sta', 'stsmc', 'ntsmc')
 # Attitude gains tuned for this drone and formation.
 SMC_GAINS = {
-    'sta': {'k0_phi': 3.82977, 'k1_phi': 717.31471, 'k2_phi': 26.17799,
-            'k0_theta': 3.82977, 'k1_theta': 717.31471, 'k2_theta': 26.17799,
-            'nu_max': 15837.01764},
-    'tc': {'k0_phi': 37.76499, 'k1_phi': 1036.52803, 'k2_phi': 1714.46675, 'k3_phi': 3110.79182,
-           'k0_theta': 37.76499, 'k1_theta': 1036.52803, 'k2_theta': 1714.46675,
-           'k3_theta': 3110.79182, 'nu_max': 2219.82598},
-    'ntsmc': {'k0_phi': 0.10031, 'k1_phi': 5152.51682, 'k2_phi': 720.59224,
-              'k0_theta': 0.10031, 'k1_theta': 5152.51682, 'k2_theta': 720.59224,
-              'k0_psi': 0.10031, 'k1_psi': 2576.25841, 'k2_psi': 360.29612,
-              'nu_max': 12647.19861},
+    'tc': {'k0_phi': 60.25, 'k0_theta': 60.25, 'k1_phi': 806.5, 'k1_theta': 806.5, 'k2_phi': 284.0, 'k2_theta': 284.0, 'k3_phi': 41.7, 'k3_theta': 41.7, 'nu_max': 18640.3},
+    'sta': {'k0_phi': 0.9346, 'k0_theta': 0.9346, 'k1_phi': 1650.24312, 'k1_theta': 1650.24312, 'k2_phi': 11.93723, 'k2_theta': 11.93723, 'nu_max': 20808.2607},
+    'stsmc': {'k0_phi': 0.20036, 'k0_theta': 0.20036, 'k1_phi': 4744.60681, 'k1_theta': 4744.60681, 'k2_phi': 1108.52578, 'k2_theta': 1108.52578, 'nu_max': 5016.8184},
+    'ntsmc': {'k0_phi': 0.27354, 'k1_phi': 8221.99787, 'k2_phi': 2055.93238, 'k0_theta': 0.27354, 'k1_theta': 8221.99787, 'k2_theta': 2055.93238, 'k0_psi': 0.10031, 'k1_psi': 2576.25841, 'k2_psi': 360.29612, 'nu_max': 4592.4458},
+}
+# Disturbance bounds of the observers per controller, position in m/s^2 and
+# attitude in rad/s^2, tuned with the gains above. 0 turns an observer off.
+OBSERVER_BOUNDS = {
+    'pid': (1.1112, 0.0507),
+    'tc': (1.0, 2.0),
+    'sta': (0.1711, 0.8433),
+    'stsmc': (2.5935, 0.6387),
+    'ntsmc': (0.2759, 0.6503),
 }
 
 
@@ -80,8 +84,10 @@ def leader_trajectory(t):
                      max(HOVER_Z, 1.0 + math.tanh(t - 2.5))])
 
 
-def make_world(template_path, controller, gains=None):
+def make_world(template_path, controller, gains=None, obs_pos=None, obs_att=None):
     """Return the path of a world file with five drones and the chosen attitude controller."""
+    obs_pos = OBSERVER_BOUNDS[controller][0] if obs_pos is None else obs_pos
+    obs_att = OBSERVER_BOUNDS[controller][1] if obs_att is None else obs_att
     template = Path(template_path).read_text()
     head, _, rest = template.partition('    <include>')
     drone = '    <include>' + rest.partition('</include>')[0] + '</include>\n'
@@ -98,9 +104,11 @@ def make_world(template_path, controller, gains=None):
         x, y, _ = OFFSETS[i]
         block = block.replace('<pose>0.4 0.4 0.3 0 0 0</pose>', f'<pose>{x} {y} 0.05 0 0 0</pose>')
         if controller == 'pid':
-            attitude = ATTITUDE_PID.format(ns=ns)
+            attitude = ATTITUDE_PID.format(ns=ns).replace(
+                '</plugin>', f'  <ftsmo_D_att>{obs_att}</ftsmo_D_att>\n      </plugin>')
         else:
             tags = {**SMC_GAINS.get(controller, {}), **(gains or {})}
+            tags['ftsmo_D_att'] = obs_att
             extra = ''.join(f'\n        <{k}>{v}</{k}>' for k, v in tags.items())
             attitude = ATTITUDE_SMC.format(cls=SMC_CLASS[controller], ns=ns, gains=extra)
         start = block.index('      <plugin name="gz::sim::systems::EspAttitudeController"')
@@ -109,7 +117,8 @@ def make_world(template_path, controller, gains=None):
         # Allow the speed the trajectory of the paper needs.
         block = block.replace(
             '<thrustBase>26300</thrustBase>\n        <posX_kp>',
-            '<thrustBase>26300</thrustBase>\n        <xyVelMax>4.0</xyVelMax>\n        <posX_kp>')
+            f'<thrustBase>26300</thrustBase>\n        <xyVelMax>4.0</xyVelMax>\n        '
+            f'<ftsmo_D_pos>{obs_pos}</ftsmo_D_pos>\n        <posX_kp>')
         # Publishes the pose of each drone for the ROS bridge.
         block = block.replace('</include>', POSE_PUBLISHER + '\n    </include>')
         parts.append(block)
