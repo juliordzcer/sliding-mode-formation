@@ -56,8 +56,8 @@ SMC_CLASS = {'sta': 'EspStaController', 'tc': 'EspTcController',
 CONTROLLERS = ('pid', 'tc', 'sta', 'stsmc', 'ntsmc')
 # Attitude gains tuned for this drone and formation.
 SMC_GAINS = {
-    'tc': {'k0_phi': 60.25, 'k0_theta': 60.25, 'k1_phi': 806.5, 'k1_theta': 806.5, 'k2_phi': 284.0, 'k2_theta': 284.0, 'k3_phi': 41.7, 'k3_theta': 41.7, 'nu_max': 18640.3},
-    'sta': {'k0_phi': 0.9346, 'k0_theta': 0.9346, 'k1_phi': 1650.24312, 'k1_theta': 1650.24312, 'k2_phi': 11.93723, 'k2_theta': 11.93723, 'nu_max': 20808.2607},
+    'tc': {'k0_phi': 6264.97819, 'k1_phi': 3758.98692, 'k2_phi': 127.93203, 'k3_phi': 308.70168, 'k0_theta': 6264.97819, 'k1_theta': 3758.98692, 'k2_theta': 127.93203, 'k3_theta': 308.70168, 'k0_psi': 920.30595, 'k1_psi': 552.18357, 'k2_psi': 18.79282, 'k3_psi': 45.34732, 'nu_max': 3035.80767, 'lpf_cutoff_hz': 187.29657, 'rate_lpf_cutoff_hz': 51.34855},
+    'sta': {'k0_phi': 0.84696, 'k1_phi': 743.98088, 'k2_phi': 93080708.05085, 'k0_theta': 0.84696, 'k1_theta': 743.98088, 'k2_theta': 93080708.05085, 'k0_psi': 0.84696, 'k1_psi': 301.58201, 'k2_psi': 37731436.34382, 'nu_max': 771.03436, 'lpf_cutoff_hz': 87.57061, 'rate_lpf_cutoff_hz': 64.49251},
     'stsmc': {'k0_phi': 0.20036, 'k0_theta': 0.20036, 'k1_phi': 4744.60681, 'k1_theta': 4744.60681, 'k2_phi': 1108.52578, 'k2_theta': 1108.52578, 'nu_max': 5016.8184},
     'ntsmc': {'k0_phi': 0.27354, 'k1_phi': 8221.99787, 'k2_phi': 2055.93238, 'k0_theta': 0.27354, 'k1_theta': 8221.99787, 'k2_theta': 2055.93238, 'k0_psi': 0.10031, 'k1_psi': 2576.25841, 'k2_psi': 360.29612, 'nu_max': 4592.4458},
 }
@@ -65,8 +65,8 @@ SMC_GAINS = {
 # attitude in rad/s^2, tuned with the gains above. 0 turns an observer off.
 OBSERVER_BOUNDS = {
     'pid': (1.1112, 0.0507),
-    'tc': (1.0, 2.0),
-    'sta': (0.1711, 0.8433),
+    'tc': (0.5448, 0.1617),
+    'sta': (1.1589, 4.9213),
     'stsmc': (2.5935, 0.6387),
     'ntsmc': (0.2759, 0.6503),
 }

@@ -115,18 +115,18 @@ Flights of the `main` branch, with the disturbance forces and torques of the pap
 
 | Controller | Observer | x [m] | y [m] | z [m] | Worst peak [m] |
 |---|---|---|---|---|---|
-| PID | Yes | 0.190 | 0.140 | 0.022 | 0.46 |
-| PID | No | 0.188 | 0.157 | 0.023 | 0.58 |
-| STSMC | Yes | 0.189 | 0.208 | 0.022 | 0.40 |
-| STSMC | No | 0.184 | 0.215 | 0.023 | 0.41 |
-| NTSMC | Yes | 0.195 | 0.206 | 0.022 | 0.39 |
-| NTSMC | No | 0.188 | 0.215 | 0.023 | 0.40 |
-| STA | Yes | 0.422 | 0.276 | 0.047 | 1.94 |
-| STA | No | 0.506 | 0.383 | 0.050 | 2.07 |
-| TC | Yes | 0.787 | 0.744 | 0.673 | 3.82 |
-| TC | No | 1.091 | 0.898 | 0.149 | 11.14 |
+| PID | Yes | 0.190 | 0.154 | 0.022 | 0.62 |
+| PID | No | 0.180 | 0.163 | 0.023 | 0.46 |
+| STSMC | Yes | 0.189 | 0.208 | 0.022 | 0.38 |
+| STSMC | No | 0.182 | 0.215 | 0.023 | 0.39 |
+| NTSMC | Yes | 0.194 | 0.205 | 0.022 | 0.39 |
+| NTSMC | No | 0.187 | 0.213 | 0.023 | 0.41 |
+| STA | Yes | 0.195 | 0.203 | 0.023 | 0.38 |
+| STA | No | 0.186 | 0.213 | 0.023 | 0.39 |
+| TC | Yes | 0.192 | 0.205 | 0.022 | 0.39 |
+| TC | No | 0.188 | 0.209 | 0.023 | 0.39 |
 
-Most of the error comes from the leader, which lags behind its trajectory, and the followers inherit that lag. The observer has a small effect with PID, STSMC and NTSMC, and a clearer one with STA. These do not reproduce the ranking of the paper, where NTSMC has the lowest error: here PID has the lowest error in y and the three best controllers are close in x.
+Most of the error comes from the leader, which lags behind its trajectory, and the followers inherit that lag, so the five controllers end up close. PID has the lowest error in y and also the largest peak. With every controller, the observer lowers the error in y a little and raises it in x a little, and it only changes the peak clearly with PID, where it is larger. These do not reproduce the ranking of the paper, where NTSMC has the lowest error.
 
 These results are for this drone and these gains, so they do not replace the ones in the paper.
 
