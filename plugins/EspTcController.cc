@@ -69,6 +69,10 @@ void EspTcController::Configure(const Entity &_entity,
   if (_sdf->HasElement("k3_phi")) k3_phi = _sdf->Get<double>("k3_phi");
   if (_sdf->HasElement("k3_theta")) k3_theta = _sdf->Get<double>("k3_theta");
   if (_sdf->HasElement("k3_psi")) k3_psi = _sdf->Get<double>("k3_psi");
+  if (_sdf->HasElement("ftsmo_D_att")) {
+    const double bound = _sdf->Get<double>("ftsmo_D_att");
+    obsPhi.setBound(bound); obsTheta.setBound(bound); obsPsi.setBound(bound);
+  }
   std::string ns = _sdf->HasElement("robotNamespace")
                    ? _sdf->Get<std::string>("robotNamespace")
                    : model.Name(_ecm);
@@ -222,6 +226,16 @@ void EspTcController::PreUpdate(const UpdateInfo &_info, EntityComponentManager 
                                + k1_theta * std::pow(std::abs(ethetap)+ 1e-6, 0.5)     * sgn(ethetap);
   double tau_psi   = nu_psi   + k0_psi   * std::pow(std::abs(epsi)   + 1e-6, 1.0/3.0) * sgn(epsi)
                                + k1_psi   * std::pow(std::abs(epsip)  + 1e-6, 0.5)     * sgn(epsip);
+
+  if (obsPhi.enabled) {
+    if (sp.thrust < 1.0) {
+      obsPhi.reset(phi); obsTheta.reset(theta); obsPsi.reset(psi);
+    } else {
+      tau_phi   -= obsPhi.update(phi, kAccelPerUnitRoll * tau_phi_f, dt) / kAccelPerUnitRoll;
+      tau_theta -= obsTheta.update(theta, kAccelPerUnitPitch * tau_theta_f, dt) / kAccelPerUnitPitch;
+      tau_psi   -= obsPsi.update(psi, kAccelPerUnitYaw * tau_psi_f, dt, true) / kAccelPerUnitYaw;
+    }
+  }
 
   tau_phi   = std::clamp(tau_phi,   -32000.0, 32000.0);
   tau_theta = std::clamp(tau_theta, -32000.0, 32000.0);

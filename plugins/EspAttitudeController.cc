@@ -112,6 +112,10 @@ void EspAttitudeController::Configure(const Entity &_entity,
   std::string gainsTopic = "/" + ns + "/pid_gains";
   this->node.Subscribe(gainsTopic, &EspAttitudeController::OnPidGains, this);
 
+  if (_sdf->HasElement("ftsmo_D_att")) {
+    const double bound = _sdf->Get<double>("ftsmo_D_att");
+    obsPhi.setBound(bound); obsTheta.setBound(bound); obsPsi.setBound(bound);
+  }
   std::string motorTopic = "/" + ns + "/control_cmd";
   this->controlCmdPub = this->node.Advertise<gz::msgs::Twist>(motorTopic);
 
@@ -272,10 +276,23 @@ void EspAttitudeController::PreUpdate(const UpdateInfo &_info,
   pidYawRate.desired = yawRateDesired;
   double yawOutput = pidYawRate.update(yawRateActual, true);
 
+  if (obsPhi.enabled) {
+    const double phi = rollActual * kDeg2Rad, theta = pitchActual * kDeg2Rad, psi = yawActual * kDeg2Rad;
+    if (setpoint.thrust < 1.0) {
+      obsPhi.reset(phi); obsTheta.reset(theta); obsPsi.reset(psi);
+    } else {
+      const double dtObs = 1.0 / this->controlFrequency;
+      rollOutput -= obsPhi.update(phi, kAccelPerUnitRoll * lastRoll, dtObs) / kAccelPerUnitRoll;
+      pitchOutput -= obsTheta.update(theta, kAccelPerUnitPitch * lastPitch, dtObs) / kAccelPerUnitPitch;
+      yawOutput -= obsPsi.update(psi, kAccelPerUnitYaw * lastYaw, dtObs, true) / kAccelPerUnitYaw;
+    }
+  }
+
   rollOutput = std::clamp(rollOutput, -32768.0, 32767.0);
   pitchOutput = std::clamp(pitchOutput, -32768.0, 32767.0);
   yawOutput = std::clamp(yawOutput, -32768.0, 32767.0);
 
+  lastRoll = rollOutput; lastPitch = pitchOutput; lastYaw = yawOutput;
   double thrust = setpoint.thrust;
 
   // Publish raw actuator signals to EspPowerDistribution for motor mixing

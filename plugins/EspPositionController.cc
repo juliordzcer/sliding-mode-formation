@@ -67,6 +67,10 @@ void EspPositionController::Configure(const Entity &_entity,
   auto readOpt = [&](const std::string &name, double &val) {
     if (_sdf->HasElement(name)) val = _sdf->Get<double>(name);
   };
+  if (_sdf->HasElement("ftsmo_D_pos")) {
+    const double bound = _sdf->Get<double>("ftsmo_D_pos");
+    obsX.setBound(bound); obsY.setBound(bound); obsZ.setBound(bound);
+  }
   readOpt("rpLimit", rpLimit);
   readOpt("xyVelMax", xyVelMax);
   readOpt("zVelMax", zVelMax);
@@ -444,6 +448,34 @@ void EspPositionController::PreUpdate(const UpdateInfo &_info,
       yawOut = this->yawDesired;
       break;
     }
+  }
+
+  // Disturbance observer of the paper. The estimate is removed through the
+  // attitude and thrust commands, which is how this cascade applies acceleration.
+  if (obsX.enabled) {
+    if (sp.mode == SpMode::STOP || thrust < 1.0) {
+      obsActive = false;
+    } else if (!obsActive) {
+      obsX.reset(px); obsY.reset(py); obsZ.reset(pz);
+      obsActive = true;
+    } else {
+      // Thrust per motor is k w^2, with w proportional to the command.
+      static constexpr double kMotor = 1.4e-07, kMaxRate = 2618.0, kMass = 0.063, kGravity = 9.81;
+      const double w = lastThrust / 65535.0 * kMaxRate;
+      const double accel = 4.0 * kMotor * w * w / kMass;
+      const auto up = pose.Rot().RotateVector(gz::math::Vector3d::UnitZ);
+      const double dx = obsX.update(px, accel * up.X(), dt);
+      const double dy = obsY.update(py, accel * up.Y(), dt);
+      const double dz = obsZ.update(pz, accel * up.Z() - kGravity, dt);
+      const double yaw = pose.Rot().Yaw();
+      const double dxBody =  dx * std::cos(yaw) + dy * std::sin(yaw);
+      const double dyBody = -dx * std::sin(yaw) + dy * std::cos(yaw);
+      pitchOut = std::clamp(pitchOut - dxBody / kGravity * kRad2Deg, -rpLimit, rpLimit);
+      rollOut = std::clamp(rollOut + dyBody / kGravity * kRad2Deg, -rpLimit, rpLimit);
+      const double perCommand = 8.0 * kMotor * std::max(w, 1.0) * kMaxRate / 65535.0;
+      thrust = std::clamp(thrust - dz * kMass / perCommand, thrustMin, 65535.0);
+    }
+    lastThrust = thrust;
   }
 
   // Publish to attitude/SMC controller

@@ -41,7 +41,9 @@ HOVER_Z = 1.0
 TAKEOFF_SEC = 5.0
 LAND_SEC = 6.0
 COMMAND_HZ = 50.0
-MASS = 0.059
+MASS = 0.063
+PHYSICS_STEP_SEC = 0.002
+INERTIA = np.array([1.594e-05, 1.4535e-05, 2.8468e-05])
 WORLD = 'espdrone_multi'
 # The trajectory of the paper reaches 1.9 m/s, more than this drone model follows well.
 TIME_SCALE = 0.5
@@ -71,16 +73,19 @@ SMC_CLASS = {'sta': 'EspStaController', 'tc': 'EspTcController',
 CONTROLLERS = ('pid', 'tc', 'sta', 'stsmc', 'ntsmc')
 # Attitude gains tuned for this drone and formation.
 SMC_GAINS = {
-    'sta': {'k0_phi': 3.82977, 'k1_phi': 717.31471, 'k2_phi': 26.17799,
-            'k0_theta': 3.82977, 'k1_theta': 717.31471, 'k2_theta': 26.17799,
-            'nu_max': 15837.01764},
-    'tc': {'k0_phi': 37.76499, 'k1_phi': 1036.52803, 'k2_phi': 1714.46675, 'k3_phi': 3110.79182,
-           'k0_theta': 37.76499, 'k1_theta': 1036.52803, 'k2_theta': 1714.46675,
-           'k3_theta': 3110.79182, 'nu_max': 2219.82598},
-    'ntsmc': {'k0_phi': 0.10031, 'k1_phi': 5152.51682, 'k2_phi': 720.59224,
-              'k0_theta': 0.10031, 'k1_theta': 5152.51682, 'k2_theta': 720.59224,
-              'k0_psi': 0.10031, 'k1_psi': 2576.25841, 'k2_psi': 360.29612,
-              'nu_max': 12647.19861},
+    'tc': {'k0_phi': 60.25, 'k0_theta': 60.25, 'k1_phi': 806.5, 'k1_theta': 806.5, 'k2_phi': 284.0, 'k2_theta': 284.0, 'k3_phi': 41.7, 'k3_theta': 41.7, 'nu_max': 18640.3},
+    'sta': {'k0_phi': 0.9346, 'k0_theta': 0.9346, 'k1_phi': 1650.24312, 'k1_theta': 1650.24312, 'k2_phi': 11.93723, 'k2_theta': 11.93723, 'nu_max': 20808.2607},
+    'stsmc': {'k0_phi': 0.20036, 'k0_theta': 0.20036, 'k1_phi': 4744.60681, 'k1_theta': 4744.60681, 'k2_phi': 1108.52578, 'k2_theta': 1108.52578, 'nu_max': 5016.8184},
+    'ntsmc': {'k0_phi': 0.27354, 'k1_phi': 8221.99787, 'k2_phi': 2055.93238, 'k0_theta': 0.27354, 'k1_theta': 8221.99787, 'k2_theta': 2055.93238, 'k0_psi': 0.10031, 'k1_psi': 2576.25841, 'k2_psi': 360.29612, 'nu_max': 4592.4458},
+}
+# Disturbance bounds of the observers per controller, position in m/s^2 and
+# attitude in rad/s^2, tuned with the gains above. 0 turns an observer off.
+OBSERVER_BOUNDS = {
+    'pid': (1.1112, 0.0507),
+    'tc': (1.0, 2.0),
+    'sta': (0.1711, 0.8433),
+    'stsmc': (2.5935, 0.6387),
+    'ntsmc': (0.2759, 0.6503),
 }
 
 
@@ -96,8 +101,10 @@ def leader_trajectory(t):
                      max(HOVER_Z, 1.0 + math.tanh(t - 2.5))])
 
 
-def make_world(controller, gains=None):
+def make_world(controller, gains=None, obs_pos=None, obs_att=None):
     """Return the path of a world file with five drones and the chosen attitude controller."""
+    obs_pos = OBSERVER_BOUNDS[controller][0] if obs_pos is None else obs_pos
+    obs_att = OBSERVER_BOUNDS[controller][1] if obs_att is None else obs_att
     template = (REPO / 'worlds' / 'espdrone_multi.sdf').read_text()
     head, _, rest = template.partition('    <include>')
     drone = '    <include>' + rest.partition('</include>')[0] + '</include>\n'
@@ -114,9 +121,11 @@ def make_world(controller, gains=None):
         x, y, _ = OFFSETS[i]
         block = block.replace('<pose>0.4 0.4 0.3 0 0 0</pose>', f'<pose>{x} {y} 0.05 0 0 0</pose>')
         if controller == 'pid':
-            attitude = ATTITUDE_PID.format(ns=ns)
+            attitude = ATTITUDE_PID.format(ns=ns).replace(
+                '</plugin>', f'  <ftsmo_D_att>{obs_att}</ftsmo_D_att>\n      </plugin>')
         else:
             tags = {**SMC_GAINS.get(controller, {}), **(gains or {})}
+            tags['ftsmo_D_att'] = obs_att
             extra = ''.join(f'\n        <{k}>{v}</{k}>' for k, v in tags.items())
             attitude = ATTITUDE_SMC.format(cls=SMC_CLASS[controller], ns=ns, gains=extra)
         start = block.index('      <plugin name="gz::sim::systems::EspAttitudeController"')
@@ -125,7 +134,8 @@ def make_world(controller, gains=None):
         # Allow the speed the trajectory of the paper needs.
         block = block.replace(
             '<thrustBase>26300</thrustBase>\n        <posX_kp>',
-            '<thrustBase>26300</thrustBase>\n        <xyVelMax>4.0</xyVelMax>\n        <posX_kp>')
+            f'<thrustBase>26300</thrustBase>\n        <xyVelMax>4.0</xyVelMax>\n        '
+            f'<ftsmo_D_pos>{obs_pos}</ftsmo_D_pos>\n        <posX_kp>')
         parts.append(block)
     parts.append(tail)
     world = tempfile.NamedTemporaryFile('w', suffix=f'_{controller}.sdf', delete=False)
@@ -142,7 +152,8 @@ class Formation:
               AUTOMATIC: ('AUTOMATIC', '#1e8449'), LANDING: ('LANDING', '#b9770e'),
               STOPPED: ('EMERGENCY STOP', '#c0392b')}
 
-    def __init__(self, controller, headless, disturbance, time_scale=TIME_SCALE, gains=None):
+    def __init__(self, controller, headless, disturbance, time_scale=TIME_SCALE, gains=None,
+                 obs_pos=None, obs_att=None):
         self.controller = controller
         self.time_scale = time_scale
         self.disturbance = disturbance
@@ -153,7 +164,15 @@ class Formation:
         self.t_state = 0.0
         self.z_from = HOVER_Z
         self.log = []
-        self.world_file = make_world(controller, gains)
+        self.node = Node()
+        self.pub_pos = [self.node.advertise(f'/espdrone{i + 1}/cmd_position', Pose) for i in range(N)]
+        self.pub_enable = [self.node.advertise(f'/espdrone{i + 1}/motor_enable', Boolean)
+                           for i in range(N)]
+        self.pub_wrench = self.node.advertise(f'/world/{WORLD}/wrench', EntityWrench)
+        self.last_wrench = None
+        self.names = {f'espdrone{i + 1}': i for i in range(N)}
+        self.node.subscribe(Pose_V, f'/world/{WORLD}/pose/info', self._on_poses)
+        self.world_file = make_world(controller, gains, obs_pos, obs_att)
         env = dict(os.environ)
         env['GZ_SIM_RESOURCE_PATH'] = f"{REPO / 'models'}:{env.get('GZ_SIM_RESOURCE_PATH', '')}"
         env['GZ_SIM_SYSTEM_PLUGIN_PATH'] = (
@@ -161,14 +180,6 @@ class Formation:
         cmd = ['gz', 'sim', '-r'] + (['-s'] if headless else []) + [self.world_file]
         self.proc = subprocess.Popen(cmd, env=env, start_new_session=True,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        self.node = Node()
-        self.pub_pos = [self.node.advertise(f'/espdrone{i + 1}/cmd_position', Pose) for i in range(N)]
-        self.pub_enable = [self.node.advertise(f'/espdrone{i + 1}/motor_enable', Boolean)
-                           for i in range(N)]
-        self.pub_wrench = self.node.advertise(f'/world/{WORLD}/wrench/persistent', EntityWrench)
-        self.pub_clear = self.node.advertise(f'/world/{WORLD}/wrench/clear', Entity)
-        self.names = {f'espdrone{i + 1}': i for i in range(N)}
-        self.node.subscribe(Pose_V, f'/world/{WORLD}/pose/info', self._on_poses)
         self.running = True
         self.steps = 0
 
@@ -214,16 +225,28 @@ class Formation:
             pub.publish(msg)
 
     def _send_disturbance(self, t):
-        # Forces of the paper, given there as accelerations, scaled to this mass.
+        # Disturbances of the paper, given there as accelerations, scaled to this drone.
         force = MASS * np.array([0.3 * math.sin(0.4 * t), 0.3 * math.cos(0.4 * t),
-                                 0.1 * math.sin(0.4 * t) - 0.1 * math.sin(0.6 * t)
+                                 -0.5 + 0.1 * math.sin(0.4 * t) - 0.1 * math.sin(0.6 * t)
                                  + 0.1 * math.cos(0.8 * t)])
+        torque = INERTIA * np.array([
+            -0.5 + 0.2 * math.sin(0.4 * t) - 0.2 * math.sin(0.6 * t) + 0.2 * math.cos(0.6 * t),
+            -0.5 + 0.2 * math.cos(0.8 * t) - 0.2 * math.sin(0.4 * t) + 0.2 * math.cos(0.8 * t),
+            -0.5 + 0.2 * math.cos(0.8 * t) - 0.2 * math.sin(0.6 * t) + 0.2 * math.cos(0.8 * t)])
+        # Each message acts during one physics step, so it carries the impulse of
+        # the whole time since the previous one.
+        elapsed = t - self.last_wrench if self.last_wrench is not None else 0.0
+        self.last_wrench = t
+        if not 0.0 < elapsed < 0.5:
+            return
+        scale = elapsed / PHYSICS_STEP_SEC
+        force, torque = scale * force, scale * torque
         for i in range(N):
             msg = EntityWrench()
             msg.entity.name = f'espdrone{i + 1}::body'
             msg.entity.type = Entity.LINK
-            self.pub_clear.publish(msg.entity)
             msg.wrench.force.x, msg.wrench.force.y, msg.wrench.force.z = (float(v) for v in force)
+            msg.wrench.torque.x, msg.wrench.torque.y, msg.wrench.torque.z = (float(v) for v in torque)
             self.pub_wrench.publish(msg)
 
     def step(self):
@@ -307,7 +330,7 @@ def save_log(formation, output, settle_sec=20.0):
 
 def run_auto(args):
     formation = Formation(args.controller, args.headless, args.disturbance, args.time_scale,
-                          json.loads(args.gains))
+                          json.loads(args.gains), args.obs_pos, args.obs_att)
     thread = threading.Thread(target=formation.run_commands, daemon=True)
     thread.start()
     try:
@@ -336,7 +359,7 @@ def run_panel(args):
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
     formation = Formation(args.controller, args.headless, args.disturbance, args.time_scale,
-                          json.loads(args.gains))
+                          json.loads(args.gains), args.obs_pos, args.obs_att)
     threading.Thread(target=formation.run_commands, daemon=True).start()
     colors = ['#e74c3c', '#e67e22', '#2ecc71', '#3498db', '#9b59b6']
 
@@ -429,12 +452,16 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--controller', choices=CONTROLLERS, default='sta')
     parser.add_argument('--headless', action='store_true', help='no Gazebo window')
-    parser.add_argument('--disturbance', action='store_true', help='forces of the paper')
+    parser.add_argument('--disturbance', action='store_true', help='forces and torques of the paper')
     parser.add_argument('--auto', action='store_true', help='fly without the control panel')
     parser.add_argument('--duration', type=float, default=50.0, help='automatic mode [s]')
     parser.add_argument('--time-scale', type=float, default=TIME_SCALE,
                         help='speed of the trajectory; 1.0 is the speed of the paper')
     parser.add_argument('--gains', default='{}', help='attitude gains as JSON')
+    parser.add_argument('--obs-pos', type=float, default=None,
+                        help='position observer disturbance bound [m/s^2]; 0 turns it off')
+    parser.add_argument('--obs-att', type=float, default=None,
+                        help='attitude observer disturbance bound [rad/s^2]; 0 turns it off')
     parser.add_argument('--output', default='results')
     args = parser.parse_args()
     if not shutil.which('gz'):
