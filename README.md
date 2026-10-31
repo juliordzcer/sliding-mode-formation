@@ -70,6 +70,10 @@ Gazebo and the control panel open after a few seconds. In the Gazebo window, pre
 | Option | What it does |
 |---|---|
 | `--controller` | `pid`, `tc`, `sta`, `stsmc` or `ntsmc` |
+| `--formation` | `paper`, `pyramid` or `letters`. See [Large formations](#large-formations) |
+| `--levels` | Layers of the pyramid: 3, 4, 5 and 6 give 14, 30, 55 and 91 drones |
+| `--text` | Letters to form, from A to Z. `COMROB`, the default, gives 101 drones |
+| `--spacing` | Distance between neighbors in a pyramid or letters, 1.2 m by default |
 | `--headless` | Run Gazebo without its window |
 | `--disturbance` | Apply the disturbance forces and torques of the paper |
 | `--obs-pos`, `--obs-att` | Disturbance bounds of the observers; `0` turns one off |
@@ -109,6 +113,43 @@ Most of the error comes from the leader, which lags behind its trajectory, and t
 
 These results are for this drone and these gains, so they do not replace the ones in the paper.
 
+## Large formations
+
+Each follower only needs the position of the leader and its own offset, so the same control flies many more drones.
+
+```bash
+python3 scripts/fly_formation.py --controller ntsmc --formation pyramid --levels 4 --headless
+python3 scripts/fly_formation.py --controller ntsmc --formation letters --text COMROB --headless
+```
+
+The leader is the drone of the lowest layer closest to the center. The drones first climb straight up to 2.5 m and then go to their place at the same time, on straight lines chosen so that they stay apart. The landing does the same in reverse.
+
+These flights have the disturbances of the paper, at half the speed of the paper, with the observer and the gains of the table above. The errors are the RMS of the followers after the first 20 s, and the peak is the largest error of a follower on any axis. Each row is one flight, except STA with 101 drones.
+
+| Controller | Drones | x [m] | y [m] | z [m] | Peak [m] | Smallest distance [m] |
+|---|---|---|---|---|---|---|
+| NTSMC | 14 | 0.193 | 0.205 | 0.022 | 0.41 | 0.81 |
+| NTSMC | 30 | 0.194 | 0.206 | 0.022 | 0.38 | 0.82 |
+| NTSMC | 55 | 0.188 | 0.200 | 0.023 | 0.38 | 0.82 |
+| NTSMC | 91 | 0.115 | 0.121 | 0.022 | 0.24 | 0.97 |
+| NTSMC | 101 | 0.122 | 0.132 | 0.022 | 0.29 | 0.98 |
+| STSMC | 30 | 0.189 | 0.207 | 0.022 | 0.41 | 0.84 |
+| STSMC | 101 | 0.124 | 0.133 | 0.022 | 0.37 | 0.98 |
+| TC | 30 | 0.191 | 0.202 | 0.022 | 0.38 | 0.83 |
+| TC | 101 | 0.118 | 0.128 | 0.022 | 0.25 | 0.98 |
+| STA | 30 | 0.191 | 0.206 | 0.023 | 0.38 | 0.82 |
+| PID | 30 | 0.178 | 0.151 | 0.023 | 1.00 | 0.34 |
+| PID | 91 | 0.264 | 0.257 | 0.023 | 1.79 | 0.06 |
+| PID | 101 | 0.219 | 0.233 | 0.023 | 3.20 | 0.38 |
+
+The sliding mode controllers keep the formation up to 101 drones. PID gets worse as drones are added, and with 91 drones two of them come within 6 cm.
+
+STA with 101 drones failed in 1 of 3 flights, with a peak of 17 m and at least one drone on the ground. That flight ran with many others on the same computer. The other two had a peak of about 0.25 m, and the cause of the failure was not found.
+
+The lower errors with 91 and 101 drones are not a benefit of having more drones. The leader, which follows the same trajectory, also has a lower error in those flights (about 0.11 m against 0.18 m), so this comes from the simulation running slower, in a way that was not worked out. Compare only flights of a similar size.
+
+**How long it takes.** Gazebo slows down with more drones, measured without flying: 0.76× real time with 25 drones, 0.40× with 50 and 0.20× with 100, on an Intel i7-14650HX. Use `--headless` with many drones, because the Gazebo window was not tested with them.
+
 ## Differences from the paper
 
 | | Paper | This repository |
@@ -123,10 +164,6 @@ These results are for this drone and these gains, so they do not replace the one
 | Gains | Table of the paper | Tuned in flight for this drone |
 
 The attitude laws of the plugins follow the equations of the paper.
-
-## TODO
-
-- Add larger formations with the same strategy, such as a pyramid with many drones or figures like letters, to show that it scales to many more agents.
 
 ## Known limitations
 
@@ -149,7 +186,7 @@ The attitude laws of the plugins follow the equations of the paper.
 | `plugins` | Motor model, position controller and attitude controllers for Gazebo |
 | `models/espdrone` | ESP-drone model |
 | `worlds` | Gazebo world |
-| `scripts` | Flight, control panel and comparison |
+| `scripts` | Flight, formations, control panel and comparison |
 
 ## How to cite
 

@@ -29,17 +29,15 @@ from gz.msgs10.entity_wrench_pb2 import EntityWrench
 from gz.msgs10.entity_pb2 import Entity
 from gz.msgs10.pose_pb2 import Pose
 from gz.msgs10.pose_v_pb2 import Pose_V
+from gz.msgs10.twist_pb2 import Twist
 from gz.transport13 import Node
+import formations
 import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent
-N = 5
-LEADER = 4
-# Formation vectors C_51 ... C_54 of the paper, around the leader.
-OFFSETS = np.array([[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [0, 0, 0]], dtype=float)
 HOVER_Z = 1.0
 TAKEOFF_SEC = 5.0
-LAND_SEC = 6.0
+MAX_TRAVEL_SPEED = 1.0
 COMMAND_HZ = 50.0
 MASS = 0.063
 PHYSICS_STEP_SEC = 0.002
@@ -101,8 +99,8 @@ def leader_trajectory(t):
                      max(HOVER_Z, 1.0 + math.tanh(t - 2.5))])
 
 
-def make_world(controller, gains=None, obs_pos=None, obs_att=None):
-    """Return the path of a world file with five drones and the chosen attitude controller."""
+def make_world(scenario, controller, gains=None, obs_pos=None, obs_att=None):
+    """Return the path of a world file with a drone on each pad and the chosen attitude controller."""
     obs_pos = OBSERVER_BOUNDS[controller][0] if obs_pos is None else obs_pos
     obs_att = OBSERVER_BOUNDS[controller][1] if obs_att is None else obs_att
     template = (REPO / 'worlds' / 'espdrone_multi.sdf').read_text()
@@ -115,10 +113,9 @@ def make_world(controller, gains=None, obs_pos=None, obs_att=None):
         '            name="gz::sim::systems::ApplyLinkWrench"/>\n'
         '    <plugin filename="gz-sim-physics-system"', 1)
     parts = [head]
-    for i in range(N):
+    for i, (x, y, _) in enumerate(scenario.pads):
         ns = f'espdrone{i + 1}'
         block = drone.replace('espdrone1', ns)
-        x, y, _ = OFFSETS[i]
         block = block.replace('<pose>0.4 0.4 0.3 0 0 0</pose>', f'<pose>{x} {y} 0.05 0 0 0</pose>')
         if controller == 'pid':
             attitude = ATTITUDE_PID.format(ns=ns).replace(
@@ -153,8 +150,11 @@ class Formation:
               STOPPED: ('EMERGENCY STOP', '#c0392b')}
 
     def __init__(self, controller, headless, disturbance, time_scale=TIME_SCALE, gains=None,
-                 obs_pos=None, obs_att=None):
+                 obs_pos=None, obs_att=None, scenario=None):
         self.controller = controller
+        self.scenario = scenario or paper_scenario()
+        N = self.scenario.size
+        self.size = N
         self.time_scale = time_scale
         self.disturbance = disturbance
         self.lock = threading.Lock()
@@ -166,13 +166,14 @@ class Formation:
         self.log = []
         self.node = Node()
         self.pub_pos = [self.node.advertise(f'/espdrone{i + 1}/cmd_position', Pose) for i in range(N)]
+        self.pub_vel = [self.node.advertise(f'/espdrone{i + 1}/cmd_vel_world', Twist) for i in range(N)]
         self.pub_enable = [self.node.advertise(f'/espdrone{i + 1}/motor_enable', Boolean)
                            for i in range(N)]
         self.pub_wrench = self.node.advertise(f'/world/{WORLD}/wrench', EntityWrench)
         self.last_wrench = None
         self.names = {f'espdrone{i + 1}': i for i in range(N)}
         self.node.subscribe(Pose_V, f'/world/{WORLD}/pose/info', self._on_poses)
-        self.world_file = make_world(controller, gains, obs_pos, obs_att)
+        self.world_file = make_world(self.scenario, controller, gains, obs_pos, obs_att)
         env = dict(os.environ)
         env['GZ_SIM_RESOURCE_PATH'] = f"{REPO / 'models'}:{env.get('GZ_SIM_RESOURCE_PATH', '')}"
         env['GZ_SIM_SYSTEM_PLUGIN_PATH'] = (
@@ -193,7 +194,7 @@ class Formation:
                     self.pos[i] = (pose.position.x, pose.position.y, pose.position.z)
 
     def wait_ready(self, timeout=60.0):
-        deadline = time.time() + timeout
+        deadline = time.time() + timeout + 2.0 * self.size
         while time.time() < deadline:
             with self.lock:
                 if not np.isnan(self.pos).any():
@@ -207,6 +208,7 @@ class Formation:
                 self.home = self.pos.copy()
             if state == self.LANDING:
                 self.land_from = self.pos.copy()
+                self.land_goals = self.scenario.landing_goals(self.land_from)
             self.state = state
             self.t_state = self.sim_time
         self._send_enable()
@@ -223,6 +225,17 @@ class Formation:
             msg.position.x, msg.position.y, msg.position.z = (float(v) for v in target)
             msg.orientation.w = 1.0
             pub.publish(msg)
+
+    def _send_velocities(self, velocities):
+        for pub, velocity in zip(self.pub_vel, velocities):
+            msg = Twist()
+            msg.linear.x, msg.linear.y, msg.linear.z = (float(v) for v in velocity)
+            pub.publish(msg)
+
+    def _go_to(self, point, pos):
+        # On the way to a large formation, the velocity loop is smoother than following
+        # a moving position.
+        self._send_velocities(np.clip(point - pos, -MAX_TRAVEL_SPEED, MAX_TRAVEL_SPEED))
 
     def _send_disturbance(self, t):
         # Disturbances of the paper, given there as accelerations, scaled to this drone.
@@ -241,7 +254,7 @@ class Formation:
             return
         scale = elapsed / PHYSICS_STEP_SEC
         force, torque = scale * force, scale * torque
-        for i in range(N):
+        for i in range(self.size):
             msg = EntityWrench()
             msg.entity.name = f'espdrone{i + 1}::body'
             msg.entity.type = Entity.LINK
@@ -259,27 +272,30 @@ class Formation:
         self.steps += 1
         if self.steps % 10 == 0:
             self._send_enable()
+        scenario = self.scenario
         if state == self.TAKING_OFF:
-            s = min(1.0, dt / TAKEOFF_SEC)
-            start = leader_trajectory(0.0) + OFFSETS
-            start[:, 2] = HOVER_Z * s
-            self._send(start)
+            point = scenario.takeoff_point(dt)
+            if 0.0 < scenario.climb_sec <= dt:
+                self._go_to(point, pos)
+            else:
+                self._send(point)
         elif state == self.AUTOMATIC:
             target = leader_trajectory(dt * self.time_scale)
-            targets = pos[LEADER] + OFFSETS
-            targets[LEADER] = target
+            targets = pos[scenario.leader] + scenario.offsets
+            targets[scenario.leader] = target
             self._send(targets)
             if self.disturbance:
                 self._send_disturbance(dt)
-            errors = pos - pos[LEADER] - OFFSETS
-            errors[LEADER] = pos[LEADER] - target
+            errors = pos - pos[scenario.leader] - scenario.offsets
+            errors[scenario.leader] = pos[scenario.leader] - target
             self.log.append((dt, *pos.ravel(), *errors.ravel()))
         elif state == self.LANDING:
-            s = max(0.0, 1.0 - dt / LAND_SEC)
-            targets = self.land_from.copy()
-            targets[:, 2] *= s
-            self._send(targets)
-            if s == 0.0:
+            point = scenario.landing_point(dt, self.land_from, self.land_goals)
+            if scenario.climb_sec > 0.0 and dt < scenario.travel_sec:
+                self._go_to(point, pos)
+            else:
+                self._send(point)
+            if dt >= scenario.takeoff_sec:
                 self.set_state(self.IDLE)
 
     def run_commands(self):
@@ -300,6 +316,20 @@ class Formation:
         os.unlink(self.world_file)
 
 
+def paper_scenario():
+    return formations.paper_scenario(leader_trajectory(0.0), TAKEOFF_SEC)
+
+
+def make_scenario(args):
+    if args.formation == 'pyramid':
+        return formations.shape_scenario(formations.pyramid(args.levels, args.spacing),
+                                         leader_trajectory(0.0))
+    if args.formation == 'letters':
+        return formations.shape_scenario(formations.letters(args.text, args.spacing),
+                                         leader_trajectory(0.0))
+    return paper_scenario()
+
+
 def wait_sim(formation, seconds):
     with formation.lock:
         end = formation.sim_time + seconds
@@ -316,21 +346,21 @@ def save_log(formation, output, settle_sec=20.0):
     """Write the flight and return the RMS formation error after the trajectory settles."""
     os.makedirs(output, exist_ok=True)
     log = np.array(formation.log)
-    names = [f'{c}{i + 1}' for i in range(N) for c in 'xyz']
+    n, leader = formation.size, formation.scenario.leader
+    names = [f'{c}{i + 1}' for i in range(n) for c in 'xyz']
     with open(os.path.join(output, f'{formation.controller}.csv'), 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['t'] + names + [f'e_{n}' for n in names])
         writer.writerows(np.round(log, 4).tolist())
-    errors = log[log[:, 0] >= settle_sec, 1 + 3 * N:].reshape(-1, N, 3)
-    followers = np.delete(errors, LEADER, axis=1)
+    errors = log[log[:, 0] >= settle_sec, 1 + 3 * n:].reshape(-1, n, 3)
+    followers = np.delete(errors, leader, axis=1)
     rms = np.sqrt((followers ** 2).mean(axis=(0, 1)))
-    leader = np.sqrt((errors[:, LEADER] ** 2).mean(axis=0))
-    return rms, leader
+    return rms, np.sqrt((errors[:, leader] ** 2).mean(axis=0))
 
 
 def run_auto(args):
     formation = Formation(args.controller, args.headless, args.disturbance, args.time_scale,
-                          json.loads(args.gains), args.obs_pos, args.obs_att)
+                          json.loads(args.gains), args.obs_pos, args.obs_att, make_scenario(args))
     thread = threading.Thread(target=formation.run_commands, daemon=True)
     thread.start()
     try:
@@ -338,7 +368,7 @@ def run_auto(args):
             raise RuntimeError('Gazebo did not start. Check that the plugins were built.')
         wait_sim(formation, 1.0)
         formation.set_state(Formation.TAKING_OFF)
-        wait_sim(formation, TAKEOFF_SEC + 3.0)
+        wait_sim(formation, formation.scenario.takeoff_sec + 3.0)
         formation.set_state(Formation.AUTOMATIC)
         wait_sim(formation, args.duration)
         rms, leader = save_log(formation, args.output)
@@ -359,9 +389,10 @@ def run_panel(args):
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
     formation = Formation(args.controller, args.headless, args.disturbance, args.time_scale,
-                          json.loads(args.gains), args.obs_pos, args.obs_att)
+                          json.loads(args.gains), args.obs_pos, args.obs_att, make_scenario(args))
     threading.Thread(target=formation.run_commands, daemon=True).start()
     colors = ['#e74c3c', '#e67e22', '#2ecc71', '#3498db', '#9b59b6']
+    n, leader = formation.size, formation.scenario.leader
 
     root = tk.Tk()
     root.title(f'COMRob 2023 | {args.controller.upper()}')
@@ -412,13 +443,15 @@ def run_panel(args):
             ax_3d.set_ylabel('y [m]', fontsize=8)
             ax_3d.set_zlabel('z [m]', fontsize=8)
             hist = np.array(trails)
-            for i in range(N):
-                ax_3d.plot(*hist[:, i].T, color=colors[i], linewidth=0.8, alpha=0.4)
-                ax_3d.scatter(*pos[i], color=colors[i], s=70 if i == LEADER else 35,
-                              marker='s' if i == LEADER else 'o')
-            ax_3d.set_xlim(-5, 5)
-            ax_3d.set_ylim(-5, 5)
-            ax_3d.set_zlim(0, 3)
+            if n <= len(colors):
+                for i in range(n):
+                    ax_3d.plot(*hist[:, i].T, color=colors[i], linewidth=0.8, alpha=0.4)
+            ax_3d.scatter(*pos[:leader].T, color='#2471a3', s=20 if n > len(colors) else 35)
+            ax_3d.scatter(*pos[leader], color='#c0392b', s=70, marker='s')
+            half = max(5.0, float(np.abs(pos[:, :2]).max()) + 1.0)
+            ax_3d.set_xlim(-half, half)
+            ax_3d.set_ylim(-half, half)
+            ax_3d.set_zlim(0, max(3.0, float(pos[:, 2].max()) + 0.5))
         ax_err.cla()
         ax_err.set_title('Formation error of the followers', fontsize=11)
         ax_err.set_xlabel('time in automatic mode [s]', fontsize=9)
@@ -426,10 +459,17 @@ def run_panel(args):
         ax_err.grid(True, linewidth=0.5, linestyle='--', alpha=0.5)
         if log:
             data = np.array(log)
-            errs = data[:, 1 + 3 * N:].reshape(-1, N, 3)
-            for i in range(N - 1):
-                ax_err.plot(data[:, 0], np.linalg.norm(errs[:, i], axis=1), color=colors[i],
-                            linewidth=1.2, label=f'R{i + 1}')
+            errs = data[:, 1 + 3 * n:].reshape(-1, n, 3)
+            norms = np.linalg.norm(errs[:, :leader], axis=2)
+            if n <= len(colors):
+                for i in range(leader):
+                    ax_err.plot(data[:, 0], norms[:, i], color=colors[i], linewidth=1.2,
+                                label=f'R{i + 1}')
+            else:
+                ax_err.plot(data[:, 0], norms.mean(axis=1), color='#2471a3', linewidth=1.2,
+                            label='mean')
+                ax_err.plot(data[:, 0], norms.max(axis=1), color='#c0392b', linewidth=1.2,
+                            label='largest')
             ax_err.legend(loc='upper right', fontsize=8, ncol=4)
         canvas.draw_idle()
         root.after(250, draw)
@@ -451,6 +491,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--controller', choices=CONTROLLERS, default='sta')
+    parser.add_argument('--formation', choices=('paper', 'pyramid', 'letters'), default='paper')
+    parser.add_argument('--levels', type=int, default=4, help='layers of the pyramid')
+    parser.add_argument('--text', default='COMROB', help='letters to form')
+    parser.add_argument('--spacing', type=float, default=1.2,
+                        help='distance between neighbors in a pyramid or letters [m]')
     parser.add_argument('--headless', action='store_true', help='no Gazebo window')
     parser.add_argument('--disturbance', action='store_true', help='forces and torques of the paper')
     parser.add_argument('--auto', action='store_true', help='fly without the control panel')
