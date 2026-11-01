@@ -1,12 +1,14 @@
 # Copyright 2026 Julio Cesar Rodriguez <contact@juliordz.com>
 # SPDX-License-Identifier: Apache-2.0
-"""Formations around the leader: the one of the paper, pyramids and letters.
+"""Formations around the leader: the ones of the papers, pyramids and letters.
 
 A scenario has the offset of each drone from the leader, which is the last drone,
 and its pad on the ground. A follower only needs the position of the leader and
 its offset, so the same law works with any number of drones.
 """
 from dataclasses import dataclass
+import math
+import typing
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -31,6 +33,7 @@ FONT = {
     'Y': (17, 17, 10, 4, 4, 4, 4), 'Z': (31, 1, 2, 4, 8, 16, 31),
 }
 PAD_SPACING = 0.6
+CNCA_HOVER_Z = 0.5
 HOP_HEIGHT = 2.5
 CLIMB_SEC = 8.0
 MAX_TAKEOFF_SPEED = 0.5
@@ -43,6 +46,9 @@ class Scenario:
     start: np.ndarray
     climb_sec: float
     travel_sec: float
+    trajectory: typing.Optional[typing.Callable] = None
+    time_scale: typing.Optional[float] = None
+    observer: bool = True
 
     @property
     def size(self):
@@ -150,3 +156,22 @@ def shape_scenario(points, leader_start):
     lifted = pads + np.array([0.0, 0.0, HOP_HEIGHT])
     travel = max(8.0, float(np.linalg.norm(start - lifted, axis=1).max()) / MAX_TAKEOFF_SPEED)
     return Scenario(offsets, pads, start, CLIMB_SEC, travel)
+
+
+def cnca_trajectory(t):
+    """Trajectory of the CNCA 2023 paper. The paper does not give the height h, so it is
+    1 m here, and the drones start from hover, so z_d does not go below it."""
+    radius = 0.2 * (math.atan(15.0) + math.atan(t - 15.0))
+    return np.array([radius * math.cos(math.pi * t / 5.0) - 0.25,
+                     radius * math.sin(math.pi * t / 5.0),
+                     max(CNCA_HOVER_Z, 0.5 * (1.0 + math.tanh(t - 2.5)) + 0.05)])
+
+
+def cnca_scenario(takeoff_sec):
+    """The two drones of the CNCA 2023 paper, without the observer of COMRob 2023:
+    R1 follows the leader R2 at C_21."""
+    offsets = np.array([[0.5, 0.0, 0.1], [0.0, 0.0, 0.0]])
+    start = offsets + cnca_trajectory(0.0)
+    pads = start.copy()
+    pads[:, 2] = 0.0
+    return Scenario(offsets, pads, start, 0.0, takeoff_sec, cnca_trajectory, 1.0, False)

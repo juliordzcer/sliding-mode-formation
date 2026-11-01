@@ -10,9 +10,15 @@ Gazebo simulation based on the paper *Diseño de Control de Formación basado en
 | `stsmc` | Continuous Singular Terminal Sliding Mode |
 | `ntsmc` | Continuous Non-Singular Terminal Sliding Mode |
 
+The repository also reproduces the two-drone experiment of the paper of [CNCA 2023](#cnca-2023).
+
 ![Trajectory of the formation](media/trajectory.gif)
 
 This repository is based on the simulation of the paper, but it uses another drone and other code. See [Differences from the paper](#differences-from-the-paper).
+
+## This branch
+
+This is the version of the repository **without ROS**. The `main` branch is the same simulation with ROS 2.
 
 ## What you need
 
@@ -28,7 +34,7 @@ You do not need to know ROS or Python to run it, and ROS is not used. Copy each 
 ```bash
 sudo apt update && sudo apt install -y git
 cd ~
-git clone https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
+git clone -b no-ros https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
 cd comrob2023-sliding-mode-formation
 ```
 
@@ -70,7 +76,7 @@ Gazebo and the control panel open after a few seconds. In the Gazebo window, pre
 | Option | What it does |
 |---|---|
 | `--controller` | `pid`, `tc`, `sta`, `stsmc` or `ntsmc` |
-| `--formation` | `paper`, `pyramid` or `letters`. See [Large formations](#large-formations) |
+| `--formation` | `paper`, `cnca2023`, `pyramid` or `letters`. See [Large formations](#large-formations) |
 | `--levels` | Layers of the pyramid: 3, 4, 5 and 6 give 14, 30, 55 and 91 drones |
 | `--text` | Letters to form, from A to Z. `COMROB`, the default, gives 101 drones |
 | `--spacing` | Distance between neighbors in a pyramid or letters, 1.2 m by default |
@@ -124,7 +130,7 @@ python3 scripts/fly_formation.py --controller ntsmc --formation letters --text C
 
 The leader is the drone of the lowest layer closest to the center. The drones first climb straight up to 2.5 m and then go to their place at the same time, on straight lines chosen so that they stay apart. The landing does the same in reverse.
 
-These flights have the disturbances of the paper, at half the speed of the paper, with the observer and the gains of the table above. The errors are the RMS of the followers after the first 20 s, and the peak is the largest error of a follower on any axis. Each row is one flight, except STA with 101 drones.
+These flights have the disturbances of the paper, at half the speed of the paper, with the observer and the gains of the table above. The errors are the RMS of the followers after the first 20 s, and the peak is the largest error of a follower on any axis. Each row is one flight.
 
 | Controller | Drones | x [m] | y [m] | z [m] | Peak [m] | Smallest distance [m] |
 |---|---|---|---|---|---|---|
@@ -142,11 +148,11 @@ These flights have the disturbances of the paper, at half the speed of the paper
 | PID | 91 | 0.264 | 0.257 | 0.023 | 1.79 | 0.06 |
 | PID | 101 | 0.219 | 0.233 | 0.023 | 3.20 | 0.38 |
 
-The sliding mode controllers keep the formation up to 101 drones. PID gets worse as drones are added, and with 91 drones two of them come within 6 cm.
+NTSMC, STSMC and TC keep the formation up to 101 drones. PID gets worse as drones are added, and with 91 drones two of them come within 6 cm.
 
 STA with 101 drones failed in 1 of 3 flights, with a peak of 17 m and at least one drone on the ground. That flight ran with many others on the same computer. The other two had a peak of about 0.25 m, and the cause of the failure was not found.
 
-The lower errors with 91 and 101 drones are not a benefit of having more drones. The leader, which follows the same trajectory, also has a lower error in those flights (about 0.11 m against 0.18 m), so this comes from the simulation running slower, in a way that was not worked out. Compare only flights of a similar size.
+The lower errors with 91 and 101 drones are not a benefit of having more drones. The leader, which follows the same trajectory, also has a lower error in those flights (about 0.11 m against 0.18 m). In the ROS 2 version, 101 drones with NTSMC have 0.196 m in x and 0.205 m in y, the same as 5 drones, with a peak of 0.40 m. So this comes from how this version runs when the simulation is slower. Compare only flights of a similar size.
 
 **How long it takes.** Gazebo slows down with more drones, measured without flying: 0.76× real time with 25 drones, 0.40× with 50 and 0.20× with 100, on an Intel i7-14650HX. Use `--headless` with many drones, because the Gazebo window was not tested with them.
 
@@ -155,7 +161,7 @@ The lower errors with 91 and 101 drones are not a benefit of having more drones.
 | | Paper | This repository |
 |---|---|---|
 | Simulator | Numerical simulation | Gazebo, with propellers and motor dynamics |
-| Drone | Crazyflie, 32 g | ESP-drone model, 59 g |
+| Drone | Crazyflie, 32 g | ESP-drone model, 63 g |
 | Position control | Virtual controls of the paper | Cascade of position and velocity loops of the drone firmware |
 | Disturbance observer | FT-SMO | The same observer, with its estimate applied through the attitude and thrust commands of the firmware cascade |
 | Disturbances | Forces and torques | The same, scaled to the mass and inertia of this drone |
@@ -165,9 +171,28 @@ The lower errors with 91 and 101 drones are not a benefit of having more drones.
 
 The attitude laws of the plugins follow the equations of the paper.
 
+## CNCA 2023
+
+This repository also reproduces the paper *Formation Control Design for Multi-Quad-Rotors with Experimental Validation* (CNCA 2023). It is the same `tc` controller, with two drones and without the observer of COMRob 2023. The drone R2 is the leader, and R1 follows it at the formation vector `[0.5, 0, 0.1]` m of the paper.
+
+![CNCA 2023 flight](media/cnca2023.gif)
+
+```bash
+python3 scripts/fly_formation.py --controller tc --formation cnca2023
+```
+
+In 3 flights without disturbances, at the speed of the paper, the RMS error of the follower after the first 20 s is 0.119 m in x, 0.117 m in y and 0.022 m in z. The leader has 0.111 m, 0.110 m and 0.022 m, so here too most of the error comes from the lag of the leader. These flights are in Gazebo and the paper is an experiment, so these values do not replace the ones in the paper.
+
+| | Paper | This repository |
+|---|---|---|
+| Platform | Experiment with two Crazyflie | Gazebo with two ESP-drone models |
+| Position control | PID of the paper | Cascade of position and velocity loops of the drone firmware |
+| Attitude control | Continuous Twisting, with the gains of the paper | Continuous Twisting, with gains tuned in flight for this drone |
+| Height `h` of the trajectory | Not given in the paper | 1 m |
+| Start | From the ground, following `z_d` | From hover at 0.5 m, because `z_d` starts almost at the ground |
+
 ## Known limitations
 
-- **TC is not reliable with this drone.** Even with tuned gains, some flights lose a drone: in the table, 2 of the 3 flights with observer. STA stays in the air but with larger errors. Do not use their results to rank them against the others.
 - **Speed.** At the speed of the paper (`--time-scale 1.0`), the controllers were not tuned and the tracking error is much larger.
 - **Windows.** The panel was tested on a virtual display, and flights were tested with Gazebo in headless mode.
 
@@ -190,7 +215,7 @@ The attitude laws of the plugins follow the equations of the paper.
 
 ## How to cite
 
-If you use this code, please cite both the paper and this repository.
+If you use this code, please cite the paper you are reproducing and this repository.
 
 ```bibtex
 @inproceedings{rodriguez2023formacion,
@@ -198,6 +223,16 @@ If you use this code, please cite both the paper and this repository.
   title     = {Diseño de Control de Formación basado en Modos Deslizantes para un Grupo de {Quad-Rotors}},
   booktitle = {XXV Congreso Mexicano de Robótica (COMRob)},
   address   = {Xalapa, México},
+  year      = {2023}
+}
+```
+
+```bibtex
+@inproceedings{rodriguez2023formation,
+  author    = {Rodríguez-Cervantes, J. C. and Dzul, A. and Ríos, H.},
+  title     = {Formation Control Design for Multi-Quad-Rotors with Experimental Validation},
+  booktitle = {Congreso Nacional de Control Automático (CNCA), AMCA},
+  address   = {Acapulco, Guerrero, México},
   year      = {2023}
 }
 ```

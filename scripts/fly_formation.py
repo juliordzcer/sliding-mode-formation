@@ -153,9 +153,10 @@ class Formation:
                  obs_pos=None, obs_att=None, scenario=None):
         self.controller = controller
         self.scenario = scenario or paper_scenario()
+        self.trajectory = self.scenario.trajectory or leader_trajectory
+        self.time_scale = self.scenario.time_scale or time_scale
         N = self.scenario.size
         self.size = N
-        self.time_scale = time_scale
         self.disturbance = disturbance
         self.lock = threading.Lock()
         self.state = self.IDLE
@@ -173,6 +174,8 @@ class Formation:
         self.last_wrench = None
         self.names = {f'espdrone{i + 1}': i for i in range(N)}
         self.node.subscribe(Pose_V, f'/world/{WORLD}/pose/info', self._on_poses)
+        if not self.scenario.observer:
+            obs_pos, obs_att = 0.0, 0.0
         self.world_file = make_world(self.scenario, controller, gains, obs_pos, obs_att)
         env = dict(os.environ)
         env['GZ_SIM_RESOURCE_PATH'] = f"{REPO / 'models'}:{env.get('GZ_SIM_RESOURCE_PATH', '')}"
@@ -280,7 +283,7 @@ class Formation:
             else:
                 self._send(point)
         elif state == self.AUTOMATIC:
-            target = leader_trajectory(dt * self.time_scale)
+            target = self.trajectory(dt * self.time_scale)
             targets = pos[scenario.leader] + scenario.offsets
             targets[scenario.leader] = target
             self._send(targets)
@@ -327,6 +330,8 @@ def make_scenario(args):
     if args.formation == 'letters':
         return formations.shape_scenario(formations.letters(args.text, args.spacing),
                                          leader_trajectory(0.0))
+    if args.formation == 'cnca2023':
+        return formations.cnca_scenario(TAKEOFF_SEC)
     return paper_scenario()
 
 
@@ -491,7 +496,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--controller', choices=CONTROLLERS, default='sta')
-    parser.add_argument('--formation', choices=('paper', 'pyramid', 'letters'), default='paper')
+    parser.add_argument('--formation', choices=('paper', 'cnca2023', 'pyramid', 'letters'),
+                        default='paper')
     parser.add_argument('--levels', type=int, default=4, help='layers of the pyramid')
     parser.add_argument('--text', default='COMROB', help='letters to form')
     parser.add_argument('--spacing', type=float, default=1.2,
