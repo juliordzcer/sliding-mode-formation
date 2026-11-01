@@ -35,7 +35,7 @@ You do not need to know ROS or Python to run it. Copy each block into a terminal
 sudo apt update && sudo apt install -y git
 mkdir -p ~/ws_comrob2023_ros/src
 cd ~/ws_comrob2023_ros/src
-git clone https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
+git clone https://github.com/juliordzcer/sliding-mode-formation.git
 ```
 
 **2. Install ROS 2, Gazebo and the other dependencies**
@@ -43,7 +43,7 @@ git clone https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
 This asks for your password and takes a while.
 
 ```bash
-cd ~/ws_comrob2023_ros/src/comrob2023-sliding-mode-formation
+cd ~/ws_comrob2023_ros/src/sliding-mode-formation
 ./install_deps.sh
 ```
 
@@ -266,7 +266,7 @@ If you use this code, please cite the paper you are reproducing and this reposit
   author = {Rodriguez, Julio Cesar},
   title  = {COMRob 2023 Sliding Mode Formation Simulation},
   year   = {2026},
-  url    = {https://github.com/juliordzcer/comrob2023-sliding-mode-formation}
+  url    = {https://github.com/juliordzcer/sliding-mode-formation}
 }
 ```
 

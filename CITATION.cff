@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this code, please cite both the paper and this repository."
 title: "COMRob 2023 Sliding Mode Formation Simulation"
 type: software
-repository-code: "https://github.com/juliordzcer/comrob2023-sliding-mode-formation"
+repository-code: "https://github.com/juliordzcer/sliding-mode-formation"
 license: Apache-2.0
 authors:
   - family-names: "Rodriguez"
