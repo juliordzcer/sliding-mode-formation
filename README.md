@@ -143,7 +143,7 @@ Each follower only needs the position of the leader and its own offset, so the s
 
 ![101 drones forming the word COMROB](media/comrob_101.gif)
 
-In this image the drones are drawn as spheres so that they can be seen, and the leader is the red one. The positions come from a flight of 101 drones with NTSMC and the disturbances of the paper, with 0.8 m between neighbors.
+In this image the drones are drawn five times larger so that they can be seen. The positions come from a flight of 101 drones with NTSMC and the disturbances of the paper, with 0.8 m between neighbors.
 
 ```bash
 ros2 launch comrob2023_formation formation.launch.py formation:=pyramid levels:=4 headless:=true
