@@ -34,8 +34,8 @@ You do not need to know ROS or Python to run it, and ROS is not used. Copy each 
 ```bash
 sudo apt update && sudo apt install -y git
 cd ~
-git clone -b no-ros https://github.com/juliordzcer/comrob2023-sliding-mode-formation.git
-cd comrob2023-sliding-mode-formation
+git clone -b no-ros https://github.com/juliordzcer/sliding-mode-formation.git
+cd sliding-mode-formation
 ```
 
 **2. Install Gazebo and the other dependencies**
@@ -246,7 +246,7 @@ If you use this code, please cite the paper you are reproducing and this reposit
   author = {Rodriguez, Julio Cesar},
   title  = {COMRob 2023 Sliding Mode Formation Simulation},
   year   = {2026},
-  url    = {https://github.com/juliordzcer/comrob2023-sliding-mode-formation}
+  url    = {https://github.com/juliordzcer/sliding-mode-formation}
 }
 ```
 
