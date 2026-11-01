@@ -16,6 +16,39 @@ The repository also reproduces the two-drone experiment of the paper of [CNCA 20
 
 This repository is based on the simulation of the paper, but it uses another drone and other code. See [Differences from the paper](#differences-from-the-paper).
 
+## How to cite
+
+If you use this code, please cite the paper you are reproducing and this repository.
+
+```bibtex
+@inproceedings{rodriguez2023formacion,
+  author    = {Rodríguez-Cervantes, J. C. and Dzul, A. and Ríos, H.},
+  title     = {Diseño de Control de Formación basado en Modos Deslizantes para un Grupo de {Quad-Rotors}},
+  booktitle = {XXV Congreso Mexicano de Robótica (COMRob)},
+  address   = {Xalapa, México},
+  year      = {2023}
+}
+```
+
+```bibtex
+@inproceedings{rodriguez2023formation,
+  author    = {Rodríguez-Cervantes, J. C. and Dzul, A. and Ríos, H.},
+  title     = {Formation Control Design for Multi-Quad-Rotors with Experimental Validation},
+  booktitle = {Congreso Nacional de Control Automático (CNCA), AMCA},
+  address   = {Acapulco, Guerrero, México},
+  year      = {2023}
+}
+```
+
+```bibtex
+@software{rodriguez2026comrob2023sim,
+  author = {Rodriguez, Julio Cesar},
+  title  = {COMRob 2023 Sliding Mode Formation Simulation},
+  year   = {2026},
+  url    = {https://github.com/juliordzcer/sliding-mode-formation}
+}
+```
+
 ## ROS 2 and no ROS
 
 This `main` branch uses **ROS 2**: a ROS node commands the drones and a bridge connects it to Gazebo. The `no-ros` branch is the same simulation without ROS.
@@ -236,39 +269,6 @@ In 3 flights without disturbances, at the speed of the paper, the RMS error of t
 | `nodes` | ROS nodes: formation commands and control panel |
 | `launch` | Launch file with Gazebo and the bridge |
 | `comrob2023_formation` | Formation, trajectory, gains and world generation |
-
-## How to cite
-
-If you use this code, please cite the paper you are reproducing and this repository.
-
-```bibtex
-@inproceedings{rodriguez2023formacion,
-  author    = {Rodríguez-Cervantes, J. C. and Dzul, A. and Ríos, H.},
-  title     = {Diseño de Control de Formación basado en Modos Deslizantes para un Grupo de {Quad-Rotors}},
-  booktitle = {XXV Congreso Mexicano de Robótica (COMRob)},
-  address   = {Xalapa, México},
-  year      = {2023}
-}
-```
-
-```bibtex
-@inproceedings{rodriguez2023formation,
-  author    = {Rodríguez-Cervantes, J. C. and Dzul, A. and Ríos, H.},
-  title     = {Formation Control Design for Multi-Quad-Rotors with Experimental Validation},
-  booktitle = {Congreso Nacional de Control Automático (CNCA), AMCA},
-  address   = {Acapulco, Guerrero, México},
-  year      = {2023}
-}
-```
-
-```bibtex
-@software{rodriguez2026comrob2023sim,
-  author = {Rodriguez, Julio Cesar},
-  title  = {COMRob 2023 Sliding Mode Formation Simulation},
-  year   = {2026},
-  url    = {https://github.com/juliordzcer/sliding-mode-formation}
-}
-```
 
 ## License
 
