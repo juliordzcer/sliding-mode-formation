@@ -141,6 +141,10 @@ These results are for this drone and these gains, so they do not replace the one
 
 Each follower only needs the position of the leader and its own offset, so the same control flies many more drones.
 
+![101 drones forming the word COMROB](media/comrob_101.gif)
+
+In this image the drones are drawn as spheres so that they can be seen, and the leader is the red one. The positions come from a flight of 101 drones with NTSMC and the disturbances of the paper, with 0.8 m between neighbors.
+
 ```bash
 ros2 launch comrob2023_formation formation.launch.py formation:=pyramid levels:=4 headless:=true
 ros2 launch comrob2023_formation formation.launch.py formation:=letters text:=COMROB headless:=true
