@@ -16,7 +16,7 @@ SUDO=""
 
 echo "==> System packages"
 $SUDO apt-get update
-$SUDO apt-get install -y curl lsb-release python3-tk python3-numpy python3-matplotlib
+$SUDO apt-get install -y curl lsb-release python3-tk python3-numpy python3-scipy python3-matplotlib
 
 if [[ ! -f /opt/ros/jazzy/setup.bash ]]; then
   echo "==> ROS 2 Jazzy"

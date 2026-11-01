@@ -12,7 +12,6 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
-from comrob2023_formation import LEADER, N
 from geometry_msgs.msg import Pose
 import matplotlib
 matplotlib.use('TkAgg')
@@ -26,6 +25,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy  # noqa: E
 from std_msgs.msg import Float64MultiArray, Int32  # noqa: E402
 
 COLORS = ['#e74c3c', '#e67e22', '#2ecc71', '#3498db', '#9b59b6']
+N = 5
 IDLE, TAKING_OFF, AUTOMATIC, LANDING, STOPPED = range(5)
 LABELS = {IDLE: ('IDLE', '#555555'), TAKING_OFF: ('TAKING OFF', '#2471a3'),
           AUTOMATIC: ('AUTOMATIC', '#1e8449'), LANDING: ('LANDING', '#b9770e'),
@@ -86,6 +86,8 @@ def ros_main(to_gui, to_ros):
 def main():
     argv = rclpy.utilities.remove_ros_args(sys.argv)
     controller = argv[1] if len(argv) > 1 else 'ntsmc'
+    global N
+    N = int(argv[2]) if len(argv) > 2 else 5
     # The worker starts before Tk exists, so it inherits no window state.
     context = mp.get_context('fork')
     to_gui, to_ros = context.Queue(maxsize=50), context.Queue()
@@ -148,13 +150,15 @@ def main():
             ax_3d.set_ylabel('y [m]', fontsize=8)
             ax_3d.set_zlabel('z [m]', fontsize=8)
             hist = np.array(view['trails'])
-            for i in range(N):
-                ax_3d.plot(*hist[:, i].T, color=COLORS[i], linewidth=0.8, alpha=0.4)
-                ax_3d.scatter(*pos[i], color=COLORS[i], s=70 if i == LEADER else 35,
-                              marker='s' if i == LEADER else 'o')
-            ax_3d.set_xlim(-5, 5)
-            ax_3d.set_ylim(-5, 5)
-            ax_3d.set_zlim(0, 3)
+            if N <= len(COLORS):
+                for i in range(N):
+                    ax_3d.plot(*hist[:, i].T, color=COLORS[i], linewidth=0.8, alpha=0.4)
+            ax_3d.scatter(*pos[:N - 1].T, color='#2471a3', s=20 if N > len(COLORS) else 35)
+            ax_3d.scatter(*pos[N - 1], color='#c0392b', s=70, marker='s')
+            half = max(5.0, float(np.nanmax(np.abs(pos[:, :2]))) + 1.0)
+            ax_3d.set_xlim(-half, half)
+            ax_3d.set_ylim(-half, half)
+            ax_3d.set_zlim(0, max(3.0, float(np.nanmax(pos[:, 2])) + 0.5))
         ax_err.cla()
         ax_err.set_title('Formation error of the followers', fontsize=11)
         ax_err.set_xlabel('time in automatic mode [s]', fontsize=9)
@@ -162,9 +166,15 @@ def main():
         ax_err.grid(True, linewidth=0.5, linestyle='--', alpha=0.5)
         if view['errors']:
             data = np.array(view['errors'])
-            for i in range(N - 1):
-                ax_err.plot(data[:, 0], data[:, i + 1], color=COLORS[i], linewidth=1.2,
-                            label=f'R{i + 1}')
+            if N <= len(COLORS):
+                for i in range(N - 1):
+                    ax_err.plot(data[:, 0], data[:, i + 1], color=COLORS[i], linewidth=1.2,
+                                label=f'R{i + 1}')
+            else:
+                ax_err.plot(data[:, 0], data[:, 1:].mean(axis=1), color='#2471a3', linewidth=1.2,
+                            label='mean')
+                ax_err.plot(data[:, 0], data[:, 1:].max(axis=1), color='#c0392b', linewidth=1.2,
+                            label='largest')
             ax_err.legend(loc='upper right', fontsize=8, ncol=4)
         canvas.draw_idle()
         root.after(250, draw)

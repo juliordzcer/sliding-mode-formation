@@ -5,15 +5,11 @@ import math
 from pathlib import Path
 import tempfile
 
+from comrob2023_formation import formations
 import numpy as np
 
-N = 5
-LEADER = 4
-# Formation vectors C_51 ... C_54 of the paper, around the leader.
-OFFSETS = np.array([[1, 1, 0], [-1, 1, 0], [1, -1, 0], [-1, -1, 0], [0, 0, 0]], dtype=float)
 HOVER_Z = 1.0
 TAKEOFF_SEC = 5.0
-LAND_SEC = 6.0
 COMMAND_HZ = 50.0
 MASS = 0.063
 INERTIA = np.array([1.594e-05, 1.4535e-05, 2.8468e-05])
@@ -84,8 +80,18 @@ def leader_trajectory(t):
                      max(HOVER_Z, 1.0 + math.tanh(t - 2.5))])
 
 
-def make_world(template_path, controller, gains=None, obs_pos=None, obs_att=None):
-    """Return the path of a world file with five drones and the chosen attitude controller."""
+def make_scenario(formation='paper', levels=4, text='COMROB', spacing=1.2):
+    if formation == 'pyramid':
+        return formations.shape_scenario(formations.pyramid(levels, spacing), leader_trajectory(0.0))
+    if formation == 'letters':
+        return formations.shape_scenario(formations.letters(text, spacing), leader_trajectory(0.0))
+    if formation == 'cnca2023':
+        return formations.cnca_scenario(TAKEOFF_SEC)
+    return formations.paper_scenario(leader_trajectory(0.0), TAKEOFF_SEC)
+
+
+def make_world(template_path, scenario, controller, gains=None, obs_pos=None, obs_att=None):
+    """Return the path of a world file with a drone on each pad and the chosen attitude controller."""
     obs_pos = OBSERVER_BOUNDS[controller][0] if obs_pos is None else obs_pos
     obs_att = OBSERVER_BOUNDS[controller][1] if obs_att is None else obs_att
     template = Path(template_path).read_text()
@@ -98,10 +104,9 @@ def make_world(template_path, controller, gains=None, obs_pos=None, obs_att=None
         '            name="gz::sim::systems::ApplyLinkWrench"/>\n'
         '    <plugin filename="gz-sim-physics-system"', 1)
     parts = [head]
-    for i in range(N):
+    for i, (x, y, _) in enumerate(scenario.pads):
         ns = f'espdrone{i + 1}'
         block = drone.replace('espdrone1', ns)
-        x, y, _ = OFFSETS[i]
         block = block.replace('<pose>0.4 0.4 0.3 0 0 0</pose>', f'<pose>{x} {y} 0.05 0 0 0</pose>')
         if controller == 'pid':
             attitude = ATTITUDE_PID.format(ns=ns).replace(

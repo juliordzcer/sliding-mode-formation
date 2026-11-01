@@ -24,3 +24,15 @@ preferred-citation:
     city: "Xalapa"
     country: "MX"
   year: 2023
+references:
+  - type: conference-paper
+    title: "Formation Control Design for Multi-Quad-Rotors with Experimental Validation"
+    authors:
+      - family-names: "Rodríguez-Cervantes"
+        given-names: "Julio César"
+      - family-names: "Dzul"
+        given-names: "Alejandro"
+      - family-names: "Ríos"
+        given-names: "Héctor"
+    collection-title: "Congreso Nacional de Control Automático (CNCA), AMCA"
+    year: 2023

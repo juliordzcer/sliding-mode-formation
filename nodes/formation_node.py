@@ -11,9 +11,9 @@ import csv
 import math
 import os
 
-from comrob2023_formation import HOVER_Z, INERTIA, LAND_SEC, LEADER, MASS, N, OFFSETS, TAKEOFF_SEC, WORLD
-from comrob2023_formation import leader_trajectory
-from geometry_msgs.msg import Pose
+from comrob2023_formation import INERTIA, MASS, WORLD
+from comrob2023_formation import leader_trajectory, make_scenario
+from geometry_msgs.msg import Pose, Twist
 import numpy as np
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -26,6 +26,7 @@ from std_msgs.msg import Bool, Float64MultiArray, Int32
 IDLE, TAKING_OFF, AUTOMATIC, LANDING, STOPPED = range(5)
 PHYSICS_STEP_SEC = 0.002
 SETTLE_SEC = 20.0
+MAX_TRAVEL_SPEED = 1.0
 
 
 class FormationNode(Node):
@@ -39,6 +40,15 @@ class FormationNode(Node):
         self.duration = self.declare_parameter('duration', 50.0).value
         self.output = self.declare_parameter('output', '').value
         self.controller = self.declare_parameter('controller', 'ntsmc').value
+
+        self.scenario = make_scenario(self.declare_parameter('formation', 'paper').value,
+                                      self.declare_parameter('levels', 4).value,
+                                      self.declare_parameter('text', 'COMROB').value,
+                                      self.declare_parameter('spacing', 1.2).value)
+        self.size = N = self.scenario.size
+        self.trajectory = self.scenario.trajectory or leader_trajectory
+        self.time_scale = self.scenario.time_scale or self.time_scale
+        self.leader = self.scenario.leader
 
         self.state = IDLE
         self.t_state = 0.0
@@ -59,6 +69,8 @@ class FormationNode(Node):
                                      lambda msg, i=i: self.on_pose(msg, i), 10)
         self.pos_pubs = [self.create_publisher(Pose, f'/espdrone{i + 1}/cmd_position', 10)
                          for i in range(N)]
+        self.vel_pubs = [self.create_publisher(Twist, f'/espdrone{i + 1}/cmd_vel_world', 10)
+                         for i in range(N)]
         self.enable_pubs = [self.create_publisher(Bool, f'/espdrone{i + 1}/motor_enable', 10)
                             for i in range(N)]
         self.wrench_pub = self.create_publisher(EntityWrench, f'/world/{WORLD}/wrench', 10)
@@ -75,6 +87,7 @@ class FormationNode(Node):
         self.t_state = self.now_sec()
         if self.state == LANDING:
             self.land_from = self.pos.copy()
+            self.land_goals = self.scenario.landing_goals(self.land_from)
         self.send_enable()
 
     def on_pose(self, msg, i):
@@ -92,6 +105,15 @@ class FormationNode(Node):
             msg.orientation.w = 1.0
             pub.publish(msg)
 
+    def go_to(self, point):
+        # On the way to a large formation, the velocity loop is smoother than following
+        # a moving position.
+        velocities = np.clip(point - self.pos, -MAX_TRAVEL_SPEED, MAX_TRAVEL_SPEED)
+        for pub, velocity in zip(self.vel_pubs, velocities):
+            msg = Twist()
+            msg.linear.x, msg.linear.y, msg.linear.z = (float(v) for v in velocity)
+            pub.publish(msg)
+
     def send_disturbance(self, t, dt):
         # Disturbances of the paper, given there as accelerations. Each message acts
         # during one physics step, so it carries the impulse of the whole period.
@@ -102,7 +124,7 @@ class FormationNode(Node):
             -0.5 + 0.2 * math.sin(0.4 * t) - 0.2 * math.sin(0.6 * t) + 0.2 * math.cos(0.6 * t),
             -0.5 + 0.2 * math.cos(0.8 * t) - 0.2 * math.sin(0.4 * t) + 0.2 * math.cos(0.8 * t),
             -0.5 + 0.2 * math.cos(0.8 * t) - 0.2 * math.sin(0.6 * t) + 0.2 * math.cos(0.8 * t)])
-        for i in range(N):
+        for i in range(self.size):
             msg = EntityWrench()
             msg.entity.name = f'espdrone{i + 1}::body'
             msg.entity.type = Entity.LINK
@@ -118,7 +140,7 @@ class FormationNode(Node):
         if self.stage == 0 and ready and now > 2.0:
             self.publish_state(TAKING_OFF)
             self.stage = 1
-        elif self.stage == 1 and self.state == TAKING_OFF and now - self.t_state > TAKEOFF_SEC + 3.0:
+        elif self.stage == 1 and self.state == TAKING_OFF and now - self.t_state > self.scenario.takeoff_sec + 3.0:
             self.publish_state(AUTOMATIC)
             self.stage = 2
         elif self.stage == 2 and self.state == AUTOMATIC and now - self.t_state > self.duration:
@@ -142,28 +164,32 @@ class FormationNode(Node):
         if self.steps % 10 == 0:
             self.send_enable()
         elapsed = now - self.t_state
+        scenario = self.scenario
         if self.state == TAKING_OFF:
-            targets = leader_trajectory(0.0) + OFFSETS
-            targets[:, 2] = HOVER_Z * min(1.0, elapsed / TAKEOFF_SEC)
-            self.send_positions(targets)
+            point = scenario.takeoff_point(elapsed)
+            if 0.0 < scenario.climb_sec <= elapsed:
+                self.go_to(point)
+            else:
+                self.send_positions(point)
         elif self.state == AUTOMATIC and not np.isnan(self.pos).any():
-            target = leader_trajectory(elapsed * self.time_scale)
-            targets = self.pos[LEADER] + OFFSETS
-            targets[LEADER] = target
+            target = self.trajectory(elapsed * self.time_scale)
+            targets = self.pos[self.leader] + scenario.offsets
+            targets[self.leader] = target
             self.send_positions(targets)
             if self.disturbance:
                 self.send_disturbance(elapsed, dt)
-            errors = self.pos - self.pos[LEADER] - OFFSETS
-            errors[LEADER] = self.pos[LEADER] - target
+            errors = self.pos - self.pos[self.leader] - scenario.offsets
+            errors[self.leader] = self.pos[self.leader] - target
             self.log.append((elapsed, *self.pos.ravel(), *errors.ravel()))
             self.error_pub.publish(Float64MultiArray(
-                data=[elapsed] + np.linalg.norm(errors[:LEADER], axis=1).tolist()))
+                data=[elapsed] + np.linalg.norm(errors[:self.leader], axis=1).tolist()))
         elif self.state == LANDING and self.land_from is not None:
-            s = max(0.0, 1.0 - elapsed / LAND_SEC)
-            targets = self.land_from.copy()
-            targets[:, 2] *= s
-            self.send_positions(targets)
-            if s == 0.0:
+            point = scenario.landing_point(elapsed, self.land_from, self.land_goals)
+            if scenario.climb_sec > 0.0 and elapsed < scenario.travel_sec:
+                self.go_to(point)
+            else:
+                self.send_positions(point)
+            if elapsed >= scenario.takeoff_sec:
                 self.publish_state(IDLE)
 
     def save_log(self):
@@ -172,13 +198,14 @@ class FormationNode(Node):
         self.saved = True
         os.makedirs(self.output, exist_ok=True)
         log = np.array(self.log)
+        N = self.size
         names = [f'{c}{i + 1}' for i in range(N) for c in 'xyz']
         with open(os.path.join(self.output, f'{self.controller}.csv'), 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(['t'] + names + [f'e_{n}' for n in names])
             writer.writerows(np.round(log, 4).tolist())
         errors = log[log[:, 0] >= SETTLE_SEC, 1 + 3 * N:].reshape(-1, N, 3)
-        rms = np.sqrt((np.delete(errors, LEADER, axis=1) ** 2).mean(axis=(0, 1)))
+        rms = np.sqrt((np.delete(errors, self.leader, axis=1) ** 2).mean(axis=(0, 1)))
         self.get_logger().info(
             f'{self.controller}: follower RMS x,y,z = {np.round(rms, 4).tolist()} m')
 
